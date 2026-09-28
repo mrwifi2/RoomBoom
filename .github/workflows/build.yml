@@ -17,9 +17,11 @@ jobs:
           java-version: 17
       - run: npm install
       - run: |
-          mkdir -p www
-          cp index.html www/index.html
+          mkdir -p www assets
+          cp roomboom-ui.html www/index.html
+          cp icon-only.png assets/icon-only.png
           npx cap add android
+          npx @capacitor/assets generate --android --iconBackgroundColor '#020806' --iconBackgroundColorDark '#020806' || echo "icon step skipped"
           npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
