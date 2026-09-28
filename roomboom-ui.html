@@ -305,4 +305,18 @@ async function loadUsers(){
   d.querySelector("small").textContent="@"+u.username+" · "+u.role+(u.is_banned?" · BANNED":"");
   const bb=d.querySelector(".b");bb.textContent=u.is_banned?"UNBAN":"BAN";
   if(u.id===me.id){bb.style.display="none";d.querySelector(".p").style.display="none"}
-  bb.onclick=async()=>{await adminCall({action:"ban",id:u.id,banned:!u.is_banned});loadUsers(
+  bb.onclick=async()=>{await adminCall({action:"ban",id:u.id,banned:!u.is_banned});loadUsers()};
+  d.querySelector(".p").onclick=async()=>{const pw=prompt("New password (min 6)");if(!pw)return;
+   const x=await adminCall({action:"password",id:u.id,password:pw});alert(x.error||"password updated")};
+  l.appendChild(d)});
+}
+$("mk").onclick=async()=>{
+ const r=await adminCall({action:"create",username:$("nu").value,callsign:$("nc").value,password:$("np").value});
+ const ok=r&&r.ok===true;$("aerr").style.color=ok?"#00ff9c":"#ff2e63";
+ $("aerr").textContent=ok?"> operative created":(r.error||"function ne galat jawab diya");
+ if(ok){$("nu").value=$("nc").value=$("np").value="";loadUsers()}
+};
+start();
+</script>
+</body>
+</html>
