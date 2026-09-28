@@ -17,11 +17,13 @@ jobs:
           java-version: 17
       - run: npm install
       - run: |
-          mkdir -p www assets
+          mkdir -p www
           cp roomboom-ui.html www/index.html
-          cp icon-only.png assets/icon-only.png
           npx cap add android
-          npx @capacitor/assets generate --android --iconBackgroundColor '#020806' --iconBackgroundColorDark '#020806' || echo "icon step skipped"
+          unzip -o icons.zip -d android/app/src/main/res
+          RES=android/app/src/main/res/values/styles.xml
+          sed -i 's|<item name="android:background">@null</item>|<item name="android:background">@null</item><item name="android:statusBarColor">#020806</item><item name="android:navigationBarColor">#020806</item><item name="android:windowBackground">#020806</item>|' $RES
+          sed -i 's|<item name="android:background">@drawable/splash</item>|<item name="android:background">#020806</item><item name="windowSplashScreenBackground">#020806</item>|' $RES
           npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
