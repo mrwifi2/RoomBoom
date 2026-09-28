@@ -1,0 +1,6 @@
+{
+  "appId": "com.roomboom.app",
+  "appName": "RoomBoom",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}
