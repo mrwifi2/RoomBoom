@@ -2,5 +2,6 @@
   "appId": "com.roomboom.app",
   "appName": "RoomBoom",
   "webDir": "www",
+  "backgroundColor": "#020806",
   "server": { "androidScheme": "https" }
 }
