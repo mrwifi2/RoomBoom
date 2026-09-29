@@ -7,18 +7,6 @@
 <title>RoomBoom</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
-  html, body, * {
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-input, textarea, [contenteditable="true"] {
-  -webkit-user-select: text;
-  -webkit-touch-callout: default;
-  user-select: text;
-}
 :root{--bg:#020806;--g:#00ff9c;--c:#00e5ff;--r:#ff2e63;--o:#ffb020;--tx:#c8ffe6;--dim:#4f8f76}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:14px ui-monospace,Menlo,Consolas,monospace;overflow:hidden;overscroll-behavior:none;touch-action:manipulation;-webkit-text-size-adjust:100%}
@@ -124,6 +112,9 @@ header h2{margin:0;flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text
 #substatus{display:block;color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #substatus.on{color:var(--g)}
 .danger{border-color:var(--r) !important;color:var(--r) !important}
+.icon-btn{width:38px;height:38px;min-width:38px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:17px;line-height:1;flex:none}
+.icon-btn:active{transform:scale(.86)}
+.bar .icon-btn{width:40px;height:40px;font-size:18px}
 </style>
 </head>
 <body>
@@ -145,12 +136,12 @@ header h2{margin:0;flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text
 
 <div id="app">
   <header>
-    <button id="back" style="display:none">◀</button>
+    <button id="back" class="icon-btn" style="display:none">◀</button>
     <div id="titleWrap"><h2 id="title" class="glow"></h2><small id="substatus"></small></div>
-    <button id="refresh" style="display:none">⟳</button>
-    <button id="plus">＋</button>
-    <button id="adm" style="display:none">🛡</button>
-    <button id="settings">⚙</button>
+    <button id="refresh" class="icon-btn" style="display:none">⟳</button>
+    <button id="plus" class="icon-btn">＋</button>
+    <button id="adm" class="icon-btn" style="display:none">🛡</button>
+    <button id="settings" class="icon-btn">⚙</button>
   </header>
   <div id="net"></div>
   <div class="view on" id="v-rooms"><div class="list" id="rooms"></div></div>
@@ -164,11 +155,11 @@ header h2{margin:0;flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text
     <div id="typing"></div>
     <div id="ctx"></div>
     <div class="bar">
-      <button id="boomBtn">💣</button>
-      <button id="attBtn">📎</button>
-      <button id="micBtn">🎙</button>
+      <button id="boomBtn" class="icon-btn">💣</button>
+      <button id="attBtn" class="icon-btn">📎</button>
+      <button id="micBtn" class="icon-btn">🎙</button>
       <input id="txt" placeholder="> transmit..." autocomplete="off">
-      <button id="send">➤</button>
+      <button id="send" class="icon-btn">➤</button>
     </div>
     <input id="fileIn" type="file" accept="image/*" style="display:none">
   </div>
@@ -250,6 +241,10 @@ function modal({title,placeholder,value="",okText="OK",onlyOk=false}){
   b.appendChild(row);w.classList.add("on");if(inp){inp.focus();inp.onkeydown=e=>{if(e.key==="Enter")close(inp.value)}}
  });
 }
+async function withBusy(btn,fn){
+ const orig=btn.innerHTML;btn.disabled=true;btn.style.opacity=".6";btn.innerHTML='<span class="spin"></span>';
+ try{return await fn()}finally{btn.disabled=false;btn.style.opacity="";btn.innerHTML=orig}
+}
 /* ---------- themes ---------- */
 const THEMES={green:{g:"#00ff9c",c:"#00e5ff",r:"#ff2e63"},blue:{g:"#00d4ff",c:"#7dfcff",r:"#ff5c5c"},red:{g:"#ff2e4e",c:"#ff8a3d",r:"#00ff9c"},amber:{g:"#ffb020",c:"#ffe083",r:"#ff2e63"}};
 function setTheme(name){
@@ -261,10 +256,10 @@ function setTheme(name){
 (()=>{try{const t=localStorage.getItem("rb_theme");if(t&&THEMES[t]){const s=document.documentElement.style,x=THEMES[t];s.setProperty("--g",x.g);s.setProperty("--c",x.c);s.setProperty("--r",x.r)}}catch(e){}})();
 
 /* ---------- auth ---------- */
-$("go").onclick=async()=>{
+$("go").onclick=()=>withBusy($("go"),async()=>{
  $("err").textContent="";let id=$("uid").value.trim().toLowerCase();if(!id.includes("@"))id+="@roomboom.app";
  const {error}=await sb.auth.signInWithPassword({email:id,password:$("pw").value});
- if(error)$("err").textContent="> ACCESS DENIED ("+error.message+")";else start()};
+ if(error)$("err").textContent="> ACCESS DENIED ("+error.message+")";else start()});
 $("pw").onkeydown=e=>{if(e.key==="Enter")$("go").click()};
 $("out").onclick=async()=>{try{localStorage.removeItem("rb_me")}catch(e){}await sb.auth.signOut();location.reload()};
 let started=false;
@@ -293,20 +288,27 @@ function show(v){
  if(v!=="chat"){clearInterval(subTimer);$("substatus").textContent=""}
  if(v!=="chat"&&chan){sb.removeChannel(chan);chan=null;room=null}
 }
-function go(v){history.pushState({v},"");show(v)}
-addEventListener("popstate",e=>{const v=(e.state&&e.state.v)||"rooms";if(room)markRead(true);show(v);if(v==="rooms")mrp.then(loadRooms);if(v==="ops")setTitle("> OPERATIVES");if(v==="admin")setTitle("> COMMAND");if(v==="settings")setTitle("> SETTINGS")});
-$("back").onclick=()=>history.back();
+let viewStack=["rooms"];
+function afterNav(v){if(v==="rooms")mrp.then(loadRooms);if(v==="ops")setTitle("> OPERATIVES");if(v==="admin")setTitle("> COMMAND");if(v==="settings")setTitle("> SETTINGS")}
+function go(v){viewStack.push(v);show(v);afterNav(v)}
+function backNav(){
+ if(room)markRead(true);
+ if(viewStack.length>1){viewStack.pop();const v=viewStack[viewStack.length-1];show(v);afterNav(v)}
+ else{const AP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;if(AP)AP.exitApp()}
+}
+$("back").onclick=backNav;
+(()=>{const AP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;if(AP)AP.addListener("backButton",()=>backNav())})();
 $("adm").onclick=()=>{go("admin");setTitle("> COMMAND");loadUsers()};
 $("plus").onclick=openOps;
 $("settings").onclick=()=>{go("settings");setTitle("> SETTINGS");$("setCallsign").value=me.callsign||"";$("setAdminLink").style.display=me.role==="admin"?"":"none"};
 document.querySelectorAll("[data-th]").forEach(b=>b.onclick=()=>setTheme(b.dataset.th));
-$("setSaveName").onclick=async()=>{
+$("setSaveName").onclick=()=>withBusy($("setSaveName"),async()=>{
  const v=$("setCallsign").value.trim();if(!v){toast("callsign khaali nahi ho sakta","err");return}
  const {error}=await sb.from("profiles").update({callsign:v}).eq("id",me.id);
  if(error){toast(error.message,"err");return}
  me.callsign=v;profiles[me.id]=me;try{localStorage.setItem("rb_me",JSON.stringify(me))}catch(e){}
  toast("callsign updated");
-};
+});
 $("goAdmin").onclick=()=>{go("admin");setTitle("> COMMAND");loadUsers()};
 $("refresh").onclick=async()=>{$("refresh").classList.add("spin-ico");await loadRooms();$("refresh").classList.remove("spin-ico")};
 
@@ -335,6 +337,25 @@ function startGlobal(){
  addEventListener("online",()=>net(true));addEventListener("offline",()=>net(false));
  document.addEventListener("visibilitychange",()=>{if(!document.hidden){if(room)markRead();if(curView==="rooms")loadRooms()}});
 }
+function openChatMenu(id,name){
+ const s=$("sheet");s.innerHTML="";s.style.display="flex";
+ const close=()=>s.style.display="none";
+ const add=(t,f)=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>{close();f()};s.appendChild(b)};
+ add("🗑 DELETE CHAT",async()=>{
+  const ok=await modal({title:"> delete chat with "+name+"? history removed for you",okText:"DELETE"});
+  if(!ok)return;
+  const {error}=await sb.from("room_members").delete().eq("room_id",id).eq("user_id",me.id);
+  if(error)toast(error.message,"err");else{toast("chat deleted");loadRooms()}
+ });
+ add("✕ CANCEL",()=>{});
+}
+(function(){
+ const el=$("rooms");let sy=null,active=false;
+ el.addEventListener("touchstart",e=>{sy=el.scrollTop<=0?e.touches[0].clientY:null},{passive:true});
+ el.addEventListener("touchmove",e=>{if(sy==null)return;
+  if(e.touches[0].clientY-sy>70&&!active){active=true;$("refresh").classList.add("spin-ico")}},{passive:true});
+ el.addEventListener("touchend",async()=>{if(active){active=false;await loadRooms();$("refresh").classList.remove("spin-ico")}sy=null});
+})();
 async function loadRooms(){
  const l=$("rooms");if(!roomsShown){l.innerHTML="";l.appendChild(loaderRow())}
  await fetchProfiles();
@@ -359,7 +380,12 @@ async function loadRooms(){
   d.querySelector(".pv").textContent=m?(m.sender_id===me.id?"you: ":"")+(m.body===DEL?"☠ purged":m.expires_at?"💣 boom message":m.media_type==="image"?"📷 photo":m.media_type==="voice"?"🎙 voice note":m.body||""):"> no transmissions yet";
   d.querySelector(".tm").textContent=m?fmt(m.created_at):"";
   if(x.u){const b=document.createElement("span");b.className="bdg";b.textContent=x.u>99?"99+":x.u;d.querySelector(".rt:last-child").appendChild(b);d.classList.add("unr")}
-  d.onclick=()=>openRoom(x.r.id,x.name,x.r.type);l.appendChild(d)});
+  let lpT=null,supp=false;
+  d.addEventListener("touchstart",()=>{supp=false;lpT=setTimeout(()=>{supp=true;openChatMenu(x.r.id,x.name)},500)});
+  d.addEventListener("touchend",()=>clearTimeout(lpT));
+  d.addEventListener("touchmove",()=>clearTimeout(lpT));
+  d.addEventListener("contextmenu",e=>{e.preventDefault();openChatMenu(x.r.id,x.name)});
+  d.onclick=()=>{if(supp){supp=false;return}openRoom(x.r.id,x.name,x.r.type)};l.appendChild(d)});
  if(!rows.length)l.innerHTML='<div class="item"><small>> no active links. tap ＋ to scan the network.</small></div>';
 }
 
@@ -391,13 +417,13 @@ function renderOps(){
 }
 $("modeDm").onclick=()=>{opsMode="dm";$("modeDm").classList.add("active");$("modeGrp").classList.remove("active");$("grpBar").style.display="none";renderOps()};
 $("modeGrp").onclick=()=>{opsMode="group";$("modeGrp").classList.add("active");$("modeDm").classList.remove("active");$("grpBar").style.display="flex";renderOps()};
-$("grpGo").onclick=async()=>{
+$("grpGo").onclick=()=>withBusy($("grpGo"),async()=>{
  const name=$("grpName").value.trim();if(!name){toast("group ka naam daalo","err");return}
  if(!selMembers.size){toast("kam se kam ek operative chuno","err");return}
  const {data,error}=await sb.rpc("create_room",{rtype:"group",rname:name,members:[...selMembers]});
  if(error){toast(error.message,"err");return}
  $("grpName").value="";selMembers.clear();openRoom(data,name,"group");
-};
+});
 
 /* ---------- chat ---------- */
 async function openRoom(id,name,type){
@@ -575,9 +601,9 @@ async function sendMedia(file,type){
  msgs.set(tempId,temp);draw(temp);
  try{
   const blob=type==="image"?await compressImage(file):file;
-  const ext=type==="image"?"jpg":"webm";
+  const ext=type==="image"?"jpg":(blob.type&&blob.type.includes("mp4")?"m4a":blob.type&&blob.type.includes("aac")?"aac":"webm");
   const path=room+"/"+crypto.randomUUID()+"."+ext;
-  const {error:upErr}=await sb.storage.from("media").upload(path,blob,{contentType:type==="image"?"image/jpeg":"audio/webm"});
+  const {error:upErr}=await sb.storage.from("media").upload(path,blob,{contentType:type==="image"?"image/jpeg":(blob.type||"audio/webm")});
   if(upErr)throw upErr;
   const row={room_id:room,sender_id:me.id,media_path:path,media_type:type};
   if(boomSecs)row.boom_seconds=boomSecs;
@@ -592,16 +618,25 @@ async function sendMedia(file,type){
 }
 $("attBtn").onclick=()=>$("fileIn").click();
 $("fileIn").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)sendMedia(f,"image")};
+function vr(){return window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.VoiceRecorder}
 $("micBtn").onclick=async()=>{
- if(mediaRecorder&&mediaRecorder.state==="recording"){mediaRecorder.stop();return}
+ const VR=vr();if(!VR){toast("voice recorder not available — rebuild required","err");return}
+ if($("micBtn").classList.contains("rec")){
+  $("micBtn").classList.remove("rec");
+  try{
+   const res=await VR.stopRecording();
+   const b64=res.value.recordDataBase64,mime=res.value.mimeType||"audio/aac";
+   const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+   const blob=new Blob([arr],{type:mime});
+   if(blob.size>800)sendMedia(blob,"voice");else toast("recording too short","err");
+  }catch(e){toast("recording failed: "+e.message,"err")}
+  return;
+ }
  try{
-  const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-  recChunks=[];mediaRecorder=new MediaRecorder(stream);
-  mediaRecorder.ondataavailable=e=>recChunks.push(e.data);
-  mediaRecorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());$("micBtn").classList.remove("rec");
-   const blob=new Blob(recChunks,{type:"audio/webm"});if(blob.size>800)sendMedia(blob,"voice")};
-  mediaRecorder.start();$("micBtn").classList.add("rec");
- }catch(e){toast("mic access denied: "+e.message,"err")}
+  const perm=await VR.hasAudioRecordingPermission();
+  if(!perm.value){const r=await VR.requestAudioRecordingPermission();if(!r.value){toast("mic permission denied","err");return}}
+  await VR.startRecording();$("micBtn").classList.add("rec");
+ }catch(e){toast("mic error: "+e.message,"err")}
 };
 $("send").onclick=send;$("txt").onkeydown=e=>{if(e.key==="Enter")send()};
 $("txt").oninput=()=>{if(chan&&Date.now()-lastTypeSent>2500){lastTypeSent=Date.now();chan.send({type:"broadcast",event:"typing",payload:{uid:me.id}})}};
@@ -622,21 +657,21 @@ async function loadUsers(){
   d.querySelector("small").textContent="@"+u.username+" · "+u.role+(u.is_banned?" · BANNED":"");
   const bb=d.querySelector(".b");bb.textContent=u.is_banned?"UNBAN":"BAN";
   if(u.id===me.id){["b","rn","p","del"].forEach(c=>d.querySelector("."+c).style.display="none")}
-  bb.onclick=async()=>{await adminCall({action:"ban",id:u.id,banned:!u.is_banned});loadUsers()};
+  bb.onclick=()=>withBusy(bb,async()=>{await adminCall({action:"ban",id:u.id,banned:!u.is_banned});loadUsers()});
   d.querySelector(".rn").onclick=async()=>{const nu=await modal({title:"> new username (a-z, 0-9, _)",placeholder:"username",value:u.username});if(!nu)return;
-   const x=await adminCall({action:"rename",id:u.id,username:nu});if(x.error)toast(x.error,"err");else{toast("username updated");loadUsers()}};
+   await withBusy(d.querySelector(".rn"),async()=>{const x=await adminCall({action:"rename",id:u.id,username:nu});if(x.error)toast(x.error,"err");else{toast("username updated");loadUsers()}})};
   d.querySelector(".p").onclick=async()=>{const pw=await modal({title:"> new password (min 6)",placeholder:"password"});if(!pw)return;
-   const x=await adminCall({action:"password",id:u.id,password:pw});toast(x.error||"password updated",x.error?"err":undefined)};
+   await withBusy(d.querySelector(".p"),async()=>{const x=await adminCall({action:"password",id:u.id,password:pw});toast(x.error||"password updated",x.error?"err":undefined)})};
   d.querySelector(".del").onclick=async()=>{const ok=await modal({title:"> delete @"+u.username+"? this cannot be undone",okText:"DELETE"});if(!ok)return;
-   const x=await adminCall({action:"delete",id:u.id});if(x.error)toast(x.error,"err");else{toast("operative removed");loadUsers()}};
+   await withBusy(d.querySelector(".del"),async()=>{const x=await adminCall({action:"delete",id:u.id});if(x.error)toast(x.error,"err");else{toast("operative removed");loadUsers()}})};
   l.appendChild(d)});
 }
-$("mk").onclick=async()=>{
+$("mk").onclick=()=>withBusy($("mk"),async()=>{
  const r=await adminCall({action:"create",username:$("nu").value,callsign:$("nc").value,password:$("np").value});
  const ok=r&&r.ok===true;$("aerr").style.color=ok?"#00ff9c":"#ff2e63";
  $("aerr").textContent=ok?"> operative created":(r.error||"function ne galat jawab diya");
  if(ok){$("nu").value=$("nc").value=$("np").value="";loadUsers()}
-};
+});
 start();
 </script>
 </body>
