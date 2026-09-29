@@ -92,11 +92,23 @@ header h2{margin:0;flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text
 .m img{max-width:220px;max-height:260px;border:1px solid #00ff9c55;border-radius:4px;display:block;cursor:pointer}
 .m audio{max-width:230px;height:34px}
 .m .cap{margin-top:4px}
+#toasts{position:fixed;top:calc(10px + env(safe-area-inset-top));left:0;right:0;z-index:70;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast{pointer-events:auto;max-width:90%;padding:9px 14px;border:1px solid var(--g);background:rgba(2,20,12,.95);color:var(--g);font-size:13px;box-shadow:0 0 14px #00ff9c55;border-radius:3px;animation:tin .25s,tout .25s 2.6s forwards}
+.toast.err{border-color:var(--r);color:var(--r);box-shadow:0 0 14px #ff2e6355}
+@keyframes tin{from{opacity:0;transform:translateY(-14px)}}
+@keyframes tout{to{opacity:0;transform:translateY(-14px)}}
+#modalWrap{position:fixed;inset:0;z-index:71;display:none;align-items:center;justify-content:center;background:rgba(0,10,6,.75)}
+#modalWrap.on{display:flex}
+#modalBox{width:min(320px,86vw);background:#04140d;border:1px solid var(--g);box-shadow:0 0 24px #00ff9c55;padding:16px;display:flex;flex-direction:column;gap:10px;animation:up .18s}
+#modalBox .mt{color:var(--g);text-shadow:0 0 8px var(--g);font-size:13px}
+#modalBox .mb{display:flex;gap:8px;justify-content:flex-end}
 </style>
 </head>
 <body>
 <canvas id="rain"></canvas>
 <div id="splash">ROOMBOOM</div>
+<div id="toasts"></div>
+<div id="modalWrap"><div id="modalBox"></div></div>
 
 <div id="login">
   <div class="gl" data-t="ROOMBOOM">ROOMBOOM</div>
@@ -176,6 +188,34 @@ async function bootLog(){for(const l of ["> booting roomboom kernel...","> encry
  const d=document.createElement("div");$("boot").appendChild(d);await new Promise(r=>type(d,l,22,r))}
  $("boot").lastChild.classList.add("cur")}
 function showLogin(){$("splash").style.display="none";$("login").style.display="flex";bootLog()}
+
+/* ---------- notifications ---------- */
+function toast(msg,type){
+ const t=document.createElement("div");t.className="toast"+(type==="err"?" err":"");t.textContent=(type==="err"?"⚠ ":"> ")+msg;
+ $("toasts").appendChild(t);setTimeout(()=>t.remove(),3000);
+}
+function modal({title,placeholder,value="",okText="OK",onlyOk=false}){
+ return new Promise(res=>{
+  const w=$("modalWrap"),b=$("modalBox");b.innerHTML="";
+  const t=document.createElement("div");t.className="mt";t.textContent=title;b.appendChild(t);
+  let inp=null;
+  if(placeholder!==undefined){inp=document.createElement("input");inp.placeholder=placeholder;inp.value=value;b.appendChild(inp)}
+  const row=document.createElement("div");row.className="mb";
+  const close=v=>{w.classList.remove("on");res(v)};
+  if(!onlyOk){const c=document.createElement("button");c.textContent="CANCEL";c.onclick=()=>close(null);row.appendChild(c)}
+  const ok=document.createElement("button");ok.textContent=okText;ok.onclick=()=>close(inp?inp.value:true);row.appendChild(ok);
+  b.appendChild(row);w.classList.add("on");if(inp){inp.focus();inp.onkeydown=e=>{if(e.key==="Enter")close(inp.value)}}
+ });
+}
+/* ---------- themes ---------- */
+const THEMES={green:{g:"#00ff9c",c:"#00e5ff",r:"#ff2e63"},blue:{g:"#00d4ff",c:"#7dfcff",r:"#ff5c5c"},red:{g:"#ff2e4e",c:"#ff8a3d",r:"#00ff9c"},amber:{g:"#ffb020",c:"#ffe083",r:"#ff2e63"}};
+function setTheme(name){
+ const t=THEMES[name];if(!t){toast("themes: green, blue, red, amber","err");return}
+ const s=document.documentElement.style;s.setProperty("--g",t.g);s.setProperty("--c",t.c);s.setProperty("--r",t.r);
+ try{localStorage.setItem("rb_theme",name)}catch(e){}
+ toast("theme: "+name);
+}
+(()=>{try{const t=localStorage.getItem("rb_theme");if(t&&THEMES[t]){const s=document.documentElement.style,x=THEMES[t];s.setProperty("--g",x.g);s.setProperty("--c",x.c);s.setProperty("--r",x.r)}}catch(e){}})();
 
 /* ---------- auth ---------- */
 $("go").onclick=async()=>{
@@ -290,10 +330,10 @@ function renderOps(){
 $("modeDm").onclick=()=>{opsMode="dm";$("modeDm").classList.add("active");$("modeGrp").classList.remove("active");$("grpBar").style.display="none";renderOps()};
 $("modeGrp").onclick=()=>{opsMode="group";$("modeGrp").classList.add("active");$("modeDm").classList.remove("active");$("grpBar").style.display="flex";renderOps()};
 $("grpGo").onclick=async()=>{
- const name=$("grpName").value.trim();if(!name){alert("group ka naam daalo");return}
- if(!selMembers.size){alert("kam se kam ek operative chuno");return}
+ const name=$("grpName").value.trim();if(!name){toast("group ka naam daalo","err");return}
+ if(!selMembers.size){toast("kam se kam ek operative chuno","err");return}
  const {data,error}=await sb.rpc("create_room",{rtype:"group",rname:name,members:[...selMembers]});
- if(error){alert(error.message);return}
+ if(error){toast(error.message,"err");return}
  $("grpName").value="";selMembers.clear();openRoom(data,name,"group");
 };
 
@@ -406,20 +446,29 @@ function updBars(){
  c.firstChild.textContent=editing?"✎ editing: "+m.body:"↩ replying to "+(profiles[m.sender_id]?.callsign||"?")+": "+m.body;
  c.lastChild.onclick=()=>{if(editing)$("txt").value="";replyTo=editing=null;updBars()};
 }
-$("boomBtn").onclick=()=>{
- const v=prompt("Boom timer in seconds (0 = off)",boomSecs||10);if(v===null)return;
- boomSecs=Math.max(0,parseInt(v)||0);$("boomBtn").style.background=boomSecs?"#ffb02066":"";
+$("boomBtn").onclick=async()=>{
+ const v=await modal({title:"> boom timer (seconds, 0 = off)",placeholder:"seconds",value:boomSecs||10});
+ if(v===null)return;boomSecs=Math.max(0,parseInt(v)||0);$("boomBtn").style.background=boomSecs?"#ffb02066":"";
+ toast(boomSecs?"boom timer set: "+boomSecs+"s":"boom timer off");
 };
+function handleCmd(raw){
+ const [cmd,...rest]=raw.slice(1).split(" ");const arg=rest.join(" ").trim();
+ if(cmd==="boom"){const n=arg==="off"?0:Math.max(0,parseInt(arg)||0);boomSecs=n;$("boomBtn").style.background=n?"#ffb02066":"";toast(n?"boom timer set: "+n+"s":"boom timer off");return}
+ if(cmd==="theme")return setTheme(arg);
+ if(cmd==="clear"){$("msgs").innerHTML="";lastDay="";toast("local view cleared");return}
+ toast("unknown command: /"+cmd,"err");
+}
 async function send(){
  const body=$("txt").value.trim();if(!body||!room)return;$("txt").value="";
+ if(!editing&&body.startsWith("/")){handleCmd(body);return}
  if(editing){const id=editing;editing=null;updBars();
   const {error}=await sb.from("messages").update({body,edited_at:new Date().toISOString()}).eq("id",id);
-  if(error)alert(error.message);return}
+  if(error)toast(error.message,"err");return}
  const row={room_id:room,sender_id:me.id,body};
  if(replyTo)row.reply_to=replyTo;if(boomSecs)row.boom_seconds=boomSecs;
  replyTo=null;updBars();
  const {data,error}=await sb.from("messages").insert(row).select().single();
- if(error)alert("send failed: "+error.message);else{msgs.set(data.id,data);draw(data)}
+ if(error)toast("send failed: "+error.message,"err");else{msgs.set(data.id,data);draw(data)}
 }
 async function compressImage(file){
  const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(file)});
@@ -432,11 +481,11 @@ async function sendMedia(blob,type){
  if(!room)return;const ext=type==="image"?"jpg":"webm";
  const path=room+"/"+crypto.randomUUID()+"."+ext;
  const {error:upErr}=await sb.storage.from("media").upload(path,blob,{contentType:type==="image"?"image/jpeg":"audio/webm"});
- if(upErr){alert("upload failed: "+upErr.message);return}
+ if(upErr){toast("upload failed: "+upErr.message,"err");return}
  const row={room_id:room,sender_id:me.id,media_path:path,media_type:type};
  if(boomSecs)row.boom_seconds=boomSecs;
  const {data,error}=await sb.from("messages").insert(row).select().single();
- if(error)alert("send failed: "+error.message);else{msgs.set(data.id,data);draw(data)}
+ if(error)toast("send failed: "+error.message,"err");else{msgs.set(data.id,data);draw(data)}
 }
 $("attBtn").onclick=()=>$("fileIn").click();
 $("fileIn").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(f){const b=await compressImage(f);sendMedia(b,"image")}};
@@ -449,7 +498,7 @@ $("micBtn").onclick=async()=>{
   mediaRecorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());$("micBtn").classList.remove("rec");
    const blob=new Blob(recChunks,{type:"audio/webm"});if(blob.size>800)sendMedia(blob,"voice")};
   mediaRecorder.start();$("micBtn").classList.add("rec");
- }catch(e){alert("mic access denied: "+e.message)}
+ }catch(e){toast("mic access denied: "+e.message,"err")}
 };
 $("send").onclick=send;$("txt").onkeydown=e=>{if(e.key==="Enter")send()};
 $("txt").oninput=()=>{if(chan&&Date.now()-lastTypeSent>2500){lastTypeSent=Date.now();chan.send({type:"broadcast",event:"typing",payload:{uid:me.id}})}};
@@ -470,8 +519,8 @@ async function loadUsers(){
   const bb=d.querySelector(".b");bb.textContent=u.is_banned?"UNBAN":"BAN";
   if(u.id===me.id){bb.style.display="none";d.querySelector(".p").style.display="none"}
   bb.onclick=async()=>{await adminCall({action:"ban",id:u.id,banned:!u.is_banned});loadUsers()};
-  d.querySelector(".p").onclick=async()=>{const pw=prompt("New password (min 6)");if(!pw)return;
-   const x=await adminCall({action:"password",id:u.id,password:pw});alert(x.error||"password updated")};
+  d.querySelector(".p").onclick=async()=>{const pw=await modal({title:"> new password (min 6)",placeholder:"password"});if(!pw)return;
+   const x=await adminCall({action:"password",id:u.id,password:pw});toast(x.error||"password updated",x.error?"err":undefined)};
   l.appendChild(d)});
 }
 $("mk").onclick=async()=>{
