@@ -23,7 +23,7 @@ jobs:
           npx cap add android
           unzip -o icons.zip -d android/app/src/main/res
           sed -i '/<uses-permission android:name="android.permission.INTERNET" \/>/a\    <uses-permission android:name="android.permission.RECORD_AUDIO" />' android/app/src/main/AndroidManifest.xml
-          sed -i '/<resources>/a\    <color name="rb_bg">#020806</color>' android/app/src/main/res/values/colors.xml
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<resources>' '<color name="rb_bg">#020806</color>' '</resources>' > android/app/src/main/res/values/rb_colors.xml
           python3 -c '
           import re
           p = "android/app/src/main/res/values/styles.xml"
