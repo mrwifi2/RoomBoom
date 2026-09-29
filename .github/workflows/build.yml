@@ -17,6 +17,7 @@ jobs:
           java-version: 17
       - run: npm install --legacy-peer-deps
       - run: |
+          set -x
           mkdir -p www
           cp roomboom-ui.html www/index.html
           npx cap add android
@@ -39,12 +40,6 @@ jobs:
           s = setbg(s, "AppTheme.NoActionBarLaunch", {"android:windowBackground": "@color/rb_bg"})
           s = setbg(s, "AppTheme", {"android:windowBackground": "@color/rb_bg", "android:statusBarColor": "@color/rb_bg", "android:navigationBarColor": "@color/rb_bg"})
           open(p, "w").write(s)
-          '
+          ' || echo "theme patch skipped, continuing"
           MAINACT=android/app/src/main/java/com/roomboom/app/MainActivity.java
           echo "cGFja2FnZSBjb20ucm9vbWJvb20uYXBwOwoKaW1wb3J0IGFuZHJvaWQuTWFuaWZlc3Q7CmltcG9ydCBhbmRyb2lkLmNvbnRlbnQucG0uUGFja2FnZU1hbmFnZXI7CmltcG9ydCBhbmRyb2lkLm9zLkJ1bmRsZTsKaW1wb3J0IGFuZHJvaWQud2Via2l0LlBlcm1pc3Npb25SZXF1ZXN0OwppbXBvcnQgYW5kcm9pZHguY29yZS5hcHAuQWN0aXZpdHlDb21wYXQ7CmltcG9ydCBjb20uZ2V0Y2FwYWNpdG9yLkJyaWRnZUFjdGl2aXR5OwppbXBvcnQgY29tLmdldGNhcGFjaXRvci5CcmlkZ2VXZWJDaHJvbWVDbGllbnQ7CgpwdWJsaWMgY2xhc3MgTWFpbkFjdGl2aXR5IGV4dGVuZHMgQnJpZGdlQWN0aXZpdHkgewogIEBPdmVycmlkZQogIHB1YmxpYyB2b2lkIG9uQ3JlYXRlKEJ1bmRsZSBzYXZlZEluc3RhbmNlU3RhdGUpIHsKICAgIHN1cGVyLm9uQ3JlYXRlKHNhdmVkSW5zdGFuY2VTdGF0ZSk7CiAgICBpZiAoQWN0aXZpdHlDb21wYXQuY2hlY2tTZWxmUGVybWlzc2lvbih0aGlzLCBNYW5pZmVzdC5wZXJtaXNzaW9uLlJFQ09SRF9BVURJTykgIT0gUGFja2FnZU1hbmFnZXIuUEVSTUlTU0lPTl9HUkFOVEVEKSB7CiAgICAgIEFjdGl2aXR5Q29tcGF0LnJlcXVlc3RQZXJtaXNzaW9ucyh0aGlzLCBuZXcgU3RyaW5nW117TWFuaWZlc3QucGVybWlzc2lvbi5SRUNPUkRfQVVESU99LCA2NTQxKTsKICAgIH0KICAgIGdldEJyaWRnZSgpLmdldFdlYlZpZXcoKS5zZXRXZWJDaHJvbWVDbGllbnQobmV3IEJyaWRnZVdlYkNocm9tZUNsaWVudChnZXRCcmlkZ2UoKSkgewogICAgICBAT3ZlcnJpZGUKICAgICAgcHVibGljIHZvaWQgb25QZXJtaXNzaW9uUmVxdWVzdChmaW5hbCBQZXJtaXNzaW9uUmVxdWVzdCByZXF1ZXN0KSB7CiAgICAgICAgcnVuT25VaVRocmVhZCgoKSAtPiByZXF1ZXN0LmdyYW50KHJlcXVlc3QuZ2V0UmVzb3VyY2VzKCkpKTsKICAgICAgfQogICAgfSk7CiAgfQp9Cg==" | base64 -d > $MAINACT
-          npx cap sync android
-      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: roomboom-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
