@@ -162,6 +162,7 @@ header h2{margin:0;flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text
       <button id="send" class="icon-btn">➤</button>
     </div>
     <input id="fileIn" type="file" accept="image/*" style="display:none">
+    <input id="fileIn2" type="file" accept="audio/*" style="display:none">
   </div>
   <div class="view" id="v-settings">
     <div class="list">
@@ -616,27 +617,39 @@ async function sendMedia(file,type){
   toast((type==="image"?"photo":"voice")+" send failed: "+(err.message||err),"err");
  }
 }
-$("attBtn").onclick=()=>$("fileIn").click();
+let attLong=false,attT=null;
+$("attBtn").addEventListener("touchstart",()=>{attLong=false;attT=setTimeout(()=>{attLong=true;$("fileIn2").click()},500)});
+$("attBtn").addEventListener("touchend",()=>clearTimeout(attT));
+$("attBtn").addEventListener("touchmove",()=>clearTimeout(attT));
+$("attBtn").onclick=()=>{if(attLong){attLong=false;return}$("fileIn").click()};
+$("attBtn").oncontextmenu=e=>{e.preventDefault();$("fileIn2").click()};
+$("fileIn2").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)sendMedia(f,"voice")};
 $("fileIn").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)sendMedia(f,"image")};
-function vr(){return window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.VoiceRecorder}
-$("micBtn").onclick=async()=>{
- const VR=vr();if(!VR){toast("voice recorder not available — rebuild required","err");return}
- if($("micBtn").classList.contains("rec")){
-  $("micBtn").classList.remove("rec");
+let micStream=null;
+async function getMicStream(){
+ const tries=[{audio:true},{audio:true,video:{width:16,height:16}},{audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}];
+ let lastErr=null;
+ for(const c of tries){
   try{
-   const res=await VR.stopRecording();
-   const b64=res.value.recordDataBase64,mime=res.value.mimeType||"audio/aac";
-   const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-   const blob=new Blob([arr],{type:mime});
-   if(blob.size>800)sendMedia(blob,"voice");else toast("recording too short","err");
-  }catch(e){toast("recording failed: "+e.message,"err")}
-  return;
+   const s=await navigator.mediaDevices.getUserMedia(c);
+   s.getVideoTracks().forEach(t=>t.stop());
+   return s;
+  }catch(e){lastErr=e;await new Promise(r=>setTimeout(r,300))}
  }
+ throw lastErr;
+}
+$("micBtn").onclick=async()=>{
+ if(mediaRecorder&&mediaRecorder.state==="recording"){mediaRecorder.stop();return}
  try{
-  const perm=await VR.hasAudioRecordingPermission();
-  if(!perm.value){const r=await VR.requestAudioRecordingPermission();if(!r.value){toast("mic permission denied","err");return}}
-  await VR.startRecording();$("micBtn").classList.add("rec");
- }catch(e){toast("mic error: "+e.message,"err")}
+  micStream=await getMicStream();
+  const mime=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg"].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
+  recChunks=[];mediaRecorder=mime?new MediaRecorder(micStream,{mimeType:mime}):new MediaRecorder(micStream);
+  mediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data)};
+  mediaRecorder.onstop=()=>{micStream.getTracks().forEach(t=>t.stop());$("micBtn").classList.remove("rec");
+   const blob=new Blob(recChunks,{type:mediaRecorder.mimeType||"audio/webm"});
+   if(blob.size>800)sendMedia(blob,"voice");else toast("recording too short","err")};
+  mediaRecorder.start();$("micBtn").classList.add("rec");
+ }catch(e){toast("mic unavailable on this device: "+e.message+" — try 📎 to attach a recording instead","err")}
 };
 $("send").onclick=send;$("txt").onkeydown=e=>{if(e.key==="Enter")send()};
 $("txt").oninput=()=>{if(chan&&Date.now()-lastTypeSent>2500){lastTypeSent=Date.now();chan.send({type:"broadcast",event:"typing",payload:{uid:me.id}})}};
