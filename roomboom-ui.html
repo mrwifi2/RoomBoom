@@ -7,18 +7,6 @@
 <title>RoomBoom</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
-  html, body, * {
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-input, textarea, [contenteditable="true"] {
-  -webkit-user-select: text;
-  -webkit-touch-callout: default;
-  user-select: text;
-}
 :root{--bg:#020806;--g:#00ff9c;--c:#00e5ff;--r:#ff2e63;--o:#ffb020;--tx:#c8ffe6;--dim:#4f8f76}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:14px ui-monospace,Menlo,Consolas,monospace;overflow:hidden;overscroll-behavior:none;touch-action:manipulation;-webkit-text-size-adjust:100%}
@@ -219,7 +207,7 @@ const $=id=>document.getElementById(id);
 let me,profiles={},room=null,chan=null,boomSecs=0,msgs=new Map(),rx={},replyTo=null,editing=null;
 let roomType="dm",otherRead=null,lastDay="",newCount=0,curView="rooms",lch=null,typingT={},lastTypeSent=0,loading=false,roomsShown=false;
 let opsMode="dm",selMembers=new Set(),opsList=[],mediaRecorder=null,recChunks=[];const urlCache=new Map();
-let otherId=null,subTimer=null;
+let otherId=null,subTimer=null,isOwner=false;
 const T=x=>+new Date(x);
 const DEL="::deleted::";
 
@@ -350,6 +338,62 @@ function startGlobal(){
  addEventListener("online",()=>net(true));addEventListener("offline",()=>net(false));
  document.addEventListener("visibilitychange",()=>{if(!document.hidden){if(room)markRead();if(curView==="rooms")loadRooms()}});
 }
+function openGroupSheet(){
+ const canManage=isOwner||me.role==="admin";
+ const s=$("sheet");s.innerHTML="";s.style.display="flex";
+ const close=()=>s.style.display="none";
+ const add=(t,f)=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>{close();f()};s.appendChild(b)};
+ if(canManage)add("✎ RENAME GROUP",async()=>{
+  const nn=await modal({title:"> new group name",placeholder:"name"});if(!nn)return;
+  const {error}=await sb.rpc("rename_room",{rid:room,new_name:nn});
+  if(error)toast(error.message,"err");else{setTitle("# "+nn);toast("group renamed");loadRooms()}
+ });
+ if(canManage)add("➕ ADD MEMBER",openAddMember);
+ if(canManage)add("👥 MANAGE MEMBERS",openManageMembers);
+ add("🚪 LEAVE GROUP",async()=>{
+  const ok=await modal({title:"> leave this group?",okText:"LEAVE"});if(!ok)return;
+  const {error}=await sb.from("room_members").delete().eq("room_id",room).eq("user_id",me.id);
+  if(error)toast(error.message,"err");else{toast("left group");backNav();loadRooms()}
+ });
+ if(canManage)add("☠ DELETE GROUP",async()=>{
+  const ok=await modal({title:"> delete this group for everyone? cannot be undone",okText:"DELETE"});if(!ok)return;
+  const {error}=await sb.rpc("delete_room",{rid:room});
+  if(error)toast(error.message,"err");else{toast("group deleted");backNav();loadRooms()}
+ });
+ add("✕ CANCEL",()=>{});
+}
+async function openAddMember(){
+ const {data:mm}=await sb.from("room_members").select("user_id").eq("room_id",room);
+ const existing=new Set((mm||[]).map(x=>x.user_id));
+ await fetchProfiles();
+ const cands=Object.values(profiles).filter(p=>p.id!==me.id&&!p.is_banned&&!existing.has(p.id));
+ const s=$("sheet");s.innerHTML="";s.style.display="flex";
+ const close=()=>s.style.display="none";
+ if(!cands.length){toast("sabhi operatives pehle se group me hain","err");return}
+ cands.forEach(p=>{
+  const b=document.createElement("button");b.textContent=p.callsign||p.username;
+  b.onclick=async()=>{close();const {error}=await sb.rpc("add_room_member",{rid:room,uid:p.id});
+   if(error)toast(error.message,"err");else toast((p.callsign||p.username)+" added to group")};
+  s.appendChild(b);
+ });
+ const c=document.createElement("button");c.textContent="✕ CANCEL";c.onclick=close;s.appendChild(c);
+}
+async function openManageMembers(){
+ const {data:mm}=await sb.from("room_members").select("user_id,role").eq("room_id",room);
+ await fetchProfiles();
+ const s=$("sheet");s.innerHTML="";s.style.display="flex";
+ const close=()=>s.style.display="none";
+ (mm||[]).forEach(x=>{
+  const p=profiles[x.user_id];if(!p)return;
+  const b=document.createElement("button");
+  b.textContent=(p.callsign||p.username)+(x.role==="owner"?" [OWNER]":"")+(x.user_id===me.id?" (you)":"")+" — tap to remove";
+  if(x.role==="owner"||x.user_id===me.id)b.disabled=true,b.style.opacity=".45";
+  else b.onclick=async()=>{close();const {error}=await sb.rpc("remove_room_member",{rid:room,uid:x.user_id});
+   if(error)toast(error.message,"err");else toast((p.callsign||p.username)+" removed from group")};
+  s.appendChild(b);
+ });
+ const c=document.createElement("button");c.textContent="✕ CLOSE";c.onclick=close;s.appendChild(c);
+}
 function openChatMenu(id,name){
  const s=$("sheet");s.innerHTML="";s.style.display="flex";
  const close=()=>s.style.display="none";
@@ -443,15 +487,18 @@ async function openRoom(id,name,type){
  room=id;roomType=type||"dm";otherId=null;msgs.clear();rx={};replyTo=editing=null;updBars();
  lastDay="";newCount=0;otherRead=null;$("tobot").style.display="none";$("typing").classList.remove("on");
  go("chat");setTitle((roomType==="group"?"# ":"◉ ")+name);$("substatus").textContent="";
+ $("titleWrap").style.cursor=roomType==="group"?"pointer":"";
  $("msgs").innerHTML="";$("msgs").appendChild(loaderRow());
  const [{data},{data:mm}]=await Promise.all([
   sb.from("messages").select("*").eq("room_id",id).order("created_at",{ascending:false}).limit(60),
-  sb.from("room_members").select("user_id,last_read_at").eq("room_id",id)]);
+  sb.from("room_members").select("user_id,last_read_at,role").eq("room_id",id)]);
  $("msgs").innerHTML="";
  (data||[]).reverse().forEach(m=>msgs.set(m.id,m));
  setOther(mm);
  clearInterval(subTimer);
+ isOwner=false;
  if(roomType==="dm"){const o=(mm||[]).find(x=>x.user_id!==me.id);otherId=o?o.user_id:null;updSub();subTimer=setInterval(updSub,20000)}
+ else{isOwner=(mm||[]).some(x=>x.user_id===me.id&&x.role==="owner");$("substatus").textContent=(mm?mm.length:0)+" members · tap name for options";$("substatus").classList.add("on")}
  await loadRx();loading=true;msgs.forEach(m=>draw(m));loading=false;$("msgs").scrollTop=1e9;
  markRead();
  chan=sb.channel("m-"+id)
@@ -668,6 +715,7 @@ $("txt").oninput=()=>{if(chan&&Date.now()-lastTypeSent>2500){lastTypeSent=Date.n
 $("msgs").onscroll=()=>{const b=$("msgs"),far=b.scrollHeight-b.scrollTop-b.clientHeight;
  if(far<120){newCount=0;$("tobot").style.display="none"}else if(far>400)showTobot()};
 $("tobot").onclick=()=>$("msgs").scrollTo({top:1e9,behavior:"smooth"});
+$("titleWrap").onclick=()=>{if(roomType==="group")openGroupSheet()};
 
 /* ---------- admin ---------- */
 async function adminCall(body){const {data,error}=await sb.functions.invoke("admin-users",{body});
@@ -675,6 +723,8 @@ async function adminCall(body){const {data,error}=await sb.functions.invoke("adm
 async function loadUsers(){
  const l=$("ulist");l.innerHTML="";l.appendChild(loaderRow());
  const r=await adminCall({action:"list"});l.innerHTML="";
+ if(r.error){toast("admin list error: "+r.error,"err");return}
+ if(!r.users||!r.users.length){l.innerHTML='<div class="item"><small>> no operatives found</small></div>';return}
  (r.users||[]).forEach(u=>{
   const d=document.createElement("div");d.className="item";
   d.innerHTML="<b class='glow'></b> <small></small><br><br><button class='b'></button> <button class='rn'>RENAME</button> <button class='p'>RESET PASS</button> <button class='del danger'>DELETE</button>";
