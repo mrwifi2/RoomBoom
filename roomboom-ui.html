@@ -7,20 +7,10 @@
 <title>RoomBoom</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
-  html, body, * {
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-input, textarea, [contenteditable="true"] {
-  -webkit-user-select: text;
-  -webkit-touch-callout: default;
-  user-select: text;
-}
 :root{--bg:#0a0a0b;--panel:#131316;--panel2:#1a1a1e;--g:#00ff9c;--c:#00e5ff;--r:#ff2e63;--o:#ffb020;--tx:#d6d6d8;--dim:#6b6b70;--line:rgba(255,255,255,.09)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body,*{-webkit-user-select:none;-webkit-touch-callout:none;-moz-user-select:none;-ms-user-select:none;user-select:none}
+input,textarea,[contenteditable="true"]{-webkit-user-select:text;-webkit-touch-callout:default;user-select:text}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:14px ui-monospace,Menlo,Consolas,monospace;overflow:hidden;overscroll-behavior:none;touch-action:manipulation;-webkit-text-size-adjust:100%}
 body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);background:radial-gradient(ellipse 120% 60% at 50% -10%,rgba(255,255,255,.035),transparent 60%),var(--bg)}
 #splash{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:var(--bg)}
@@ -813,7 +803,7 @@ $("attBtn").onclick=()=>{if(attLong){attLong=false;return}$("fileIn").click()};
 $("attBtn").oncontextmenu=e=>{e.preventDefault();$("fileIn2").click()};
 $("fileIn2").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)sendMedia(f,"voice")};
 $("fileIn").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)sendMedia(f,"image")};
-let micStream=null;
+let micStream=null,micRecording=false;
 async function getMicStream(){
  const tries=[{audio:true},{audio:true,video:{width:16,height:16}},{audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}];
  let lastErr=null;
@@ -826,7 +816,33 @@ async function getMicStream(){
  }
  throw lastErr;
 }
-$("micBtn").onclick=async()=>{
+function b64ToBlob(b64,mime){
+ const bin=atob(b64),arr=new Uint8Array(bin.length);
+ for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+ return new Blob([arr],{type:mime||"audio/aac"});
+}
+const VR=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.VoiceRecorder;
+async function micClickNative(){
+ if(micRecording){
+  micRecording=false;$("micBtn").classList.remove("rec");
+  try{
+   const {recordDataBase64,mimeType}=await VR.stopRecording();
+   const blob=b64ToBlob(recordDataBase64,mimeType);
+   if(blob.size>800)sendMedia(blob,"voice");else toast("recording too short","err");
+  }catch(e){toast("recording failed: "+(e.message||e),"err")}
+  return;
+ }
+ try{
+  const {value:has}=await VR.hasAudioRecordingPermission();
+  if(!has){
+   const {value:granted}=await VR.requestAudioRecordingPermission();
+   if(!granted){toast("mic permission denied — try 📎 to attach a recording instead","err");return}
+  }
+  await VR.startRecording();
+  micRecording=true;$("micBtn").classList.add("rec");
+ }catch(e){toast("mic unavailable: "+(e.message||e)+" — try 📎 to attach a recording instead","err")}
+}
+async function micClickWeb(){
  if(mediaRecorder&&mediaRecorder.state==="recording"){mediaRecorder.stop();return}
  try{
   micStream=await getMicStream();
@@ -838,7 +854,8 @@ $("micBtn").onclick=async()=>{
    if(blob.size>800)sendMedia(blob,"voice");else toast("recording too short","err")};
   mediaRecorder.start();$("micBtn").classList.add("rec");
  }catch(e){toast("mic unavailable on this device: "+e.message+" — try 📎 to attach a recording instead","err")}
-};
+}
+$("micBtn").onclick=()=>VR?micClickNative():micClickWeb();
 $("send").onclick=send;$("txt").onkeydown=e=>{if(e.key==="Enter")send()};
 $("txt").oninput=()=>{if(chan&&Date.now()-lastTypeSent>2500){lastTypeSent=Date.now();chan.send({type:"broadcast",event:"typing",payload:{uid:me.id}})}};
 $("msgs").onscroll=()=>{const b=$("msgs"),far=b.scrollHeight-b.scrollTop-b.clientHeight;
