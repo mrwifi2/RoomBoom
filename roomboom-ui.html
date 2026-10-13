@@ -174,6 +174,7 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
   <div class="modebar"><button data-th="green">GREEN</button><button data-th="blue">BLUE</button></div>
   <div class="modebar"><button data-th="red">RED</button><button data-th="amber">AMBER</button></div>
   <button id="drawerAdmin" style="display:none">🛡 COMMAND PANEL</button>
+  <button id="drawerAnnounce" style="display:none">📣 MAKE ANNOUNCEMENT</button>
   <button id="out" class="danger" style="display:none">⏻ LOGOUT</button>
 </div>
 
@@ -266,6 +267,21 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
         <small id="ppUser"></small>
       </div>
       <button id="ppLogout" class="danger rip-host">⏻ LOGOUT</button>
+    </div>
+  </div>
+
+  <div class="panelOverlay" id="announceOverlay"></div>
+  <div class="sidePanel" id="announcePanel">
+    <div class="panelHead"><h3 class="glow">MAKE ANNOUNCEMENT</h3><button id="announceClose" class="icon-btn rip-host">✕</button></div>
+    <div class="panelBody">
+      <input id="annTitle" placeholder="title">
+      <textarea id="annBody" placeholder="write your announcement..." rows="5"></textarea>
+      <input id="annLink" placeholder="link (optional) — https://...">
+      <button id="annFileBtn" class="annFileBtn rip-host">📎 attach a file (optional)</button>
+      <input id="annFileIn" type="file" style="display:none">
+      <div id="annFileName" class="annFileName" style="display:none"></div>
+      <button id="annSend" class="rip-host">📣 SEND ANNOUNCEMENT</button>
+      <div id="annErr" style="margin-top:8px;font-size:13px"></div>
     </div>
   </div>
 </div>
@@ -431,6 +447,7 @@ function backNav(){
  if($("drawer").classList.contains("open")){closeDrawer();return}
  if(typeof closeNotifPanel==="function"&&$("notifPanel").classList.contains("on")){closeNotifPanel();return}
  if(typeof closeProfilePanel==="function"&&$("profilePanel").classList.contains("on")){closeProfilePanel();return}
+ if(typeof closeAnnouncePanel==="function"&&$("announcePanel").classList.contains("on")){closeAnnouncePanel();return}
  if($("sheet").style.display==="flex"){$("sheet").style.display="none";return}
  if(room)markRead(true);
  if(viewStack.length>1){viewStack.pop();const v=viewStack[viewStack.length-1];show(v);afterNav(v)}
@@ -442,6 +459,7 @@ $("back").onclick=backNav;
 function openDrawer(){
  $("setCallsign").value=me.callsign||"";
  $("drawerAdmin").style.display=me.role==="admin"?"":"none";
+ $("drawerAnnounce").style.display=me.role==="admin"?"":"none";
  $("drawer").classList.add("open");$("drawerOverlay").classList.add("on");
 }
 function closeDrawer(){$("drawer").classList.remove("open");$("drawerOverlay").classList.remove("on")}
