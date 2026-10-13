@@ -55,9 +55,67 @@ $("navHome").onclick=()=>{
 };
 $("navProfile").onclick=()=>openProfilePanel();
 
-/* ---------- notification centre (in-app only for now; announcements tab
-   will be wired to Supabase + admin "make announcement" panel in phase 2) ---------- */
-function openNotifPanel(){$("notifOverlay").classList.add("on");$("notifPanel").classList.add("on")}
+/* ---------- notification centre: notifications (placeholder) + announcements
+   (real, wired to Supabase "announcements" table) — phase 2 ---------- */
+let annList=[];
+function annTime(iso){return typeof fmt==="function"?fmt(iso):new Date(iso).toLocaleString()}
+function renderAnnCard(a){
+ const d=document.createElement("div");d.className="annCard";
+ const at=document.createElement("span");at.className="at";at.textContent=annTime(a.created_at);
+ const ttl=document.createElement("span");ttl.className="ttl";ttl.textContent="📣 "+(a.title||"announcement");
+ const bd=document.createElement("div");bd.className="bd";bd.textContent=a.body||"";
+ d.appendChild(at);d.appendChild(ttl);d.appendChild(bd);
+ if(a.link){
+  const link=document.createElement("a");link.href=a.link;link.target="_blank";link.rel="noopener";link.textContent="🔗 "+a.link;
+  d.appendChild(link);
+ }
+ if(a.file_path){
+  const fl=document.createElement("a");fl.className="fileLink";fl.href="#";fl.textContent="📎 "+(a.file_name||"download file");
+  fl.onclick=async e=>{e.preventDefault();const u=await mediaUrl(a.file_path);if(u)window.open(u,"_blank");else toast("file load failed","err")};
+  d.appendChild(fl);
+ }
+ return d;
+}
+async function loadAnnouncements(){
+ const body=$("notifBody");
+ body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
+ const {data,error}=await sb.from("announcements").select("*").order("created_at",{ascending:false}).limit(50);
+ if(error){body.innerHTML='<div class="panelEmpty">&gt; failed to load announcements<br><small style="opacity:.7">'+error.message+'</small></div>';return}
+ annList=data||[];
+ if(!annList.length)body.innerHTML='<div class="panelEmpty">&gt; no announcements yet<br><small style="opacity:.7">admin announcements will appear here</small></div>';
+ else{body.innerHTML="";annList.forEach(a=>body.appendChild(renderAnnCard(a)))}
+ try{if(annList.length)localStorage.setItem("rb_ann_seen",annList[0].created_at)}catch(e){}
+ $("notifDot").style.display="none";
+}
+async function checkAnnouncementsDot(){
+ const {data}=await sb.from("announcements").select("created_at").order("created_at",{ascending:false}).limit(1);
+ const latest=data&&data[0];if(!latest)return;
+ let seen=null;try{seen=localStorage.getItem("rb_ann_seen")}catch(e){}
+ $("notifDot").style.display=(!seen||new Date(latest.created_at)>new Date(seen))?"":"none";
+}
+function subscribeAnnouncements(){
+ sb.channel("ann").on("postgres_changes",{event:"INSERT",schema:"public",table:"announcements"},p=>{
+  toast("📣 new announcement: "+(p.new.title||""));
+  $("notifDot").style.display="";
+  if($("notifPanel").classList.contains("on")&&$("tabAnn").classList.contains("active")){
+   annList.unshift(p.new);$("notifBody").prepend(renderAnnCard(p.new));
+  }
+ }).subscribe();
+}
+(function(){
+ let inited=false;
+ function tryInit(){
+  if(inited||$("app").style.display!=="flex")return;
+  inited=true;checkAnnouncementsDot();subscribeAnnouncements();
+ }
+ new MutationObserver(tryInit).observe($("app"),{attributes:true,attributeFilter:["style"]});
+ tryInit();
+})();
+
+function openNotifPanel(){
+ $("notifOverlay").classList.add("on");$("notifPanel").classList.add("on");
+ if($("notifDot").style.display!=="none")switchNotifTab("ann");
+}
 function closeNotifPanel(){$("notifOverlay").classList.remove("on");$("notifPanel").classList.remove("on")}
 $("notifBtn").onclick=openNotifPanel;
 $("notifClose").onclick=closeNotifPanel;
@@ -65,12 +123,47 @@ $("notifOverlay").onclick=closeNotifPanel;
 function switchNotifTab(tab){
  $("tabNotif").classList.toggle("active",tab==="notif");
  $("tabAnn").classList.toggle("active",tab==="ann");
- $("notifBody").innerHTML=tab==="notif"
-  ?'<div class="panelEmpty">&gt; no notifications yet</div>'
-  :'<div class="panelEmpty">&gt; no announcements yet<br><small style="opacity:.7">admin announcements will appear here</small></div>';
+ if(tab==="notif")$("notifBody").innerHTML='<div class="panelEmpty">&gt; no notifications yet</div>';
+ else loadAnnouncements();
 }
 $("tabNotif").onclick=()=>switchNotifTab("notif");
 $("tabAnn").onclick=()=>switchNotifTab("ann");
+
+/* ---------- make announcement (admin only) ---------- */
+let annFile=null;
+function openAnnouncePanel(){
+ $("annTitle").value="";$("annBody").value="";$("annLink").value="";$("annErr").textContent="";
+ annFile=null;$("annFileName").style.display="none";$("annFileName").textContent="";
+ $("announceOverlay").classList.add("on");$("announcePanel").classList.add("on");
+}
+function closeAnnouncePanel(){$("announceOverlay").classList.remove("on");$("announcePanel").classList.remove("on")}
+$("drawerAnnounce").onclick=()=>{closeDrawer();openAnnouncePanel()};
+$("announceClose").onclick=closeAnnouncePanel;
+$("announceOverlay").onclick=closeAnnouncePanel;
+$("annFileBtn").onclick=()=>$("annFileIn").click();
+$("annFileIn").onchange=e=>{
+ const f=e.target.files[0];e.target.value="";if(!f)return;
+ annFile=f;$("annFileName").textContent="📎 "+f.name+" ("+Math.round(f.size/1024)+" KB)";$("annFileName").style.display="";
+};
+$("annSend").onclick=()=>withBusy($("annSend"),async()=>{
+ const title=$("annTitle").value.trim(),body=$("annBody").value.trim(),link=$("annLink").value.trim();
+ if(!title&&!body){$("annErr").style.color="var(--r)";$("annErr").textContent="> title ya message likho";return}
+ $("annErr").textContent="";
+ try{
+  let file_path=null,file_name=null;
+  if(annFile){
+   const ext=annFile.name.split(".").pop()||"bin";
+   const path="announcements/"+crypto.randomUUID()+"."+ext;
+   const {error:upErr}=await sb.storage.from("media").upload(path,annFile,{contentType:annFile.type||"application/octet-stream"});
+   if(upErr)throw upErr;
+   file_path=path;file_name=annFile.name;
+  }
+  const {error}=await sb.from("announcements").insert({created_by:me.id,title:title||"announcement",body:body||null,link:link||null,file_path,file_name});
+  if(error)throw error;
+  toast("announcement sent");closeAnnouncePanel();
+  if($("notifPanel").classList.contains("on")&&$("tabAnn").classList.contains("active"))loadAnnouncements();
+ }catch(err){$("annErr").style.color="var(--r)";$("annErr").textContent="> "+(err.message||err)}
+});
 
 /* ---------- profile panel ---------- */
 function refreshProfilePanel(){
@@ -128,5 +221,6 @@ dragToDismiss($("drawer"),{axis:"x",getOpen:()=>$("drawer").classList.contains("
 dragToDismiss($("notifPanel"),{axis:"y",getOpen:()=>$("notifPanel").classList.contains("on"),onClose:closeNotifPanel,threshold:80,handle:$("notifPanel").querySelector(".panelHead")});
 dragToDismiss($("profilePanel"),{axis:"y",getOpen:()=>$("profilePanel").classList.contains("on"),onClose:closeProfilePanel,threshold:80,handle:$("profilePanel").querySelector(".panelHead")});
 dragToDismiss($("sheet"),{axis:"y",getOpen:()=>$("sheet").style.display==="flex",onClose:()=>{$("sheet").style.display="none"},threshold:70});
+dragToDismiss($("announcePanel"),{axis:"y",getOpen:()=>$("announcePanel").classList.contains("on"),onClose:closeAnnouncePanel,threshold:80,handle:$("announcePanel").querySelector(".panelHead")});
 
 syncBnavActive();
