@@ -30,9 +30,11 @@
 .ndot{position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:var(--r);
  box-shadow:0 0 5px var(--r)}
 
-/* ---------- sheet backdrop (tap outside to dismiss) ---------- */
+/* ---------- sheet: backdrop (tap outside to dismiss) + grab handle ---------- */
 #sheetOverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:39;opacity:0;pointer-events:none;transition:opacity .2s}
 #sheetOverlay.on{opacity:1;pointer-events:auto}
+#sheet{padding-top:20px}
+#sheet:before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);width:36px;height:4px;border-radius:2px;background:var(--line)}
 
 /* ---------- notification centre / profile: slide-up side panels ---------- */
 .panelOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:58;opacity:0;pointer-events:none;transition:opacity .25s}
@@ -41,7 +43,8 @@
  border-top:1px solid var(--line);border-radius:16px 16px 0 0;display:flex;flex-direction:column;
  transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.8,.3,1);padding-bottom:env(safe-area-inset-bottom)}
 .sidePanel.on{transform:translateY(0)}
-.panelHead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);flex:none}
+.panelHead{position:relative;display:flex;align-items:center;gap:10px;padding:20px 16px 14px;border-bottom:1px solid var(--line);flex:none}
+.panelHead:before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);width:36px;height:4px;border-radius:2px;background:var(--line)}
 .panelHead h3{margin:0;flex:1;font-size:14px;letter-spacing:1px}
 .panelTabs{display:flex;flex:none;border-bottom:1px solid var(--line)}
 .panelTabs button{flex:1;background:transparent;border:none;color:var(--dim);padding:11px 4px;font-size:11px;
