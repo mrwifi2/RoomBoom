@@ -146,7 +146,10 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
 #drawer .modebar{padding:0}
 #drawer .modebar button{text-align:center}
 #drawer #out{margin-top:auto}
+.item.row{border:none;border-radius:0;background:transparent;margin-bottom:0;padding:11px 14px}
+.item.row:active{background:rgba(255,255,255,.05)}
 </style>
+<link rel="stylesheet" href="nav.css">
 </head>
 <body>
 <canvas id="rain"></canvas>
@@ -164,19 +167,14 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
 <div id="modalWrap"><div id="modalBox"></div></div>
 <div id="drawerOverlay"></div>
 <div id="drawer">
-  <div class="dprof">
-    <div id="drawAv"></div>
-    <div class="mid"><b class="glow" id="drawName"></b><small id="drawUser" style="color:var(--dim)"></small></div>
-  </div>
-  <button id="drawerGroup">👥 NEW GROUP</button>
-  <button id="drawerAdmin" style="display:none">🛡 COMMAND PANEL</button>
-  <div class="dsec">&gt; IDENTITY</div>
+  <div class="dsec" style="margin-top:0">&gt; IDENTITY</div>
   <input id="setCallsign" placeholder="callsign">
   <button id="setSaveName">SAVE CALLSIGN</button>
   <div class="dsec">&gt; THEME</div>
   <div class="modebar"><button data-th="green">GREEN</button><button data-th="blue">BLUE</button></div>
   <div class="modebar"><button data-th="red">RED</button><button data-th="amber">AMBER</button></div>
-  <button id="out" class="danger">⏻ LOGOUT</button>
+  <button id="drawerAdmin" style="display:none">🛡 COMMAND PANEL</button>
+  <button id="out" class="danger" style="display:none">⏻ LOGOUT</button>
 </div>
 
 <div id="login">
@@ -196,7 +194,7 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
     <button id="menu" class="icon-btn">☰</button>
     <div id="titleWrap"><h2 id="title" class="glow"></h2><small id="substatus"></small></div>
     <button id="refresh" class="icon-btn" style="display:none">⟳</button>
-    <button id="plus" class="icon-btn">＋</button>
+    <button id="notifBtn" class="icon-btn">🔔<span id="notifDot" class="ndot" style="display:none"></span></button>
   </header>
   <div id="net"></div>
   <div class="view on" id="v-rooms"><div class="list" id="rooms"></div></div>
@@ -238,6 +236,38 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
     </div>
   </div>
   <div id="sheet"></div>
+  <div id="sheetOverlay"></div>
+
+  <nav id="bnav">
+    <button id="navAdd" class="rip-host"><span class="ic">➕</span><span>ADD</span></button>
+    <button id="navHome" class="rip-host active"><span class="ic">⌂</span><span>HOME</span></button>
+    <button id="navProfile" class="rip-host"><span class="ic">👤</span><span>PROFILE</span></button>
+  </nav>
+
+  <div class="panelOverlay" id="notifOverlay"></div>
+  <div class="sidePanel" id="notifPanel">
+    <div class="panelHead"><h3 class="glow">NOTIFICATION CENTRE</h3><button id="notifClose" class="icon-btn rip-host">✕</button></div>
+    <div class="panelTabs">
+      <button id="tabNotif" class="active">🔔 NOTIFICATIONS</button>
+      <button id="tabAnn">📣 ANNOUNCEMENTS</button>
+    </div>
+    <div class="panelBody" id="notifBody">
+      <div class="panelEmpty">&gt; no notifications yet</div>
+    </div>
+  </div>
+
+  <div class="panelOverlay" id="profileOverlay"></div>
+  <div class="sidePanel" id="profilePanel">
+    <div class="panelHead"><h3 class="glow">PROFILE</h3><button id="profileClose" class="icon-btn rip-host">✕</button></div>
+    <div class="panelBody">
+      <div class="ppAv">
+        <div id="ppAvBox"></div>
+        <b class="glow" id="ppName"></b>
+        <small id="ppUser"></small>
+      </div>
+      <button id="ppLogout" class="danger rip-host">⏻ LOGOUT</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -336,10 +366,11 @@ function modal({title,placeholder,value="",okText="OK",onlyOk=false}){
   let inp=null;
   if(placeholder!==undefined){inp=document.createElement("input");inp.placeholder=placeholder;inp.value=value;b.appendChild(inp)}
   const row=document.createElement("div");row.className="mb";
-  const close=v=>{w.classList.remove("on");res(v)};
+  const close=v=>{w.classList.remove("on");w.onclick=null;res(v)};
   if(!onlyOk){const c=document.createElement("button");c.textContent="CANCEL";c.onclick=()=>close(null);row.appendChild(c)}
   const ok=document.createElement("button");ok.textContent=okText;ok.onclick=()=>close(inp?inp.value:true);row.appendChild(ok);
-  b.appendChild(row);w.classList.add("on");if(inp){inp.focus();inp.onkeydown=e=>{if(e.key==="Enter")close(inp.value)}}
+  b.appendChild(row);w.classList.add("on");w.onclick=e=>{if(e.target===w)close(null)};
+  if(inp){inp.focus();inp.onkeydown=e=>{if(e.key==="Enter")close(inp.value)}}
  });
 }
 async function withBusy(btn,fn){
@@ -386,8 +417,9 @@ function show(v){
  curView=v;$("rain").style.display="none";
  ["rooms","ops","chat","admin"].forEach(x=>$("v-"+x).classList.toggle("on",x===v));
  $("back").style.display=v==="rooms"?"none":"";$("menu").style.display=v==="rooms"?"":"none";
- $("plus").style.display=v==="rooms"?"":"none";
+ $("notifBtn").style.display=v==="rooms"?"":"none";
  $("refresh").style.display=v==="rooms"?"":"none";
+ $("bnav").classList.toggle("on",v!=="chat");
  if(v==="rooms")setTitle("ROOMBOOM");
  if(v!=="chat"){clearInterval(subTimer);$("substatus").textContent=""}
  if(v!=="chat"&&chan){sb.removeChannel(chan);chan=null;room=null}
@@ -397,18 +429,17 @@ function afterNav(v){if(v==="rooms")mrp.then(loadRooms);if(v==="ops")setTitle(">
 function go(v){if(viewStack[viewStack.length-1]!==v)viewStack.push(v);show(v);afterNav(v)}
 function backNav(){
  if($("drawer").classList.contains("open")){closeDrawer();return}
+ if(typeof closeNotifPanel==="function"&&$("notifPanel").classList.contains("on")){closeNotifPanel();return}
+ if(typeof closeProfilePanel==="function"&&$("profilePanel").classList.contains("on")){closeProfilePanel();return}
+ if($("sheet").style.display==="flex"){$("sheet").style.display="none";return}
  if(room)markRead(true);
  if(viewStack.length>1){viewStack.pop();const v=viewStack[viewStack.length-1];show(v);afterNav(v)}
  else{const AP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;if(AP)AP.exitApp()}
 }
 $("back").onclick=backNav;
 (()=>{const AP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;if(AP)AP.addListener("backButton",()=>backNav())})();
-$("plus").onclick=openOps;
-/* ---------- drawer (profile / groups / admin / settings) ---------- */
+/* ---------- drawer (identity / theme / admin / settings) ---------- */
 function openDrawer(){
- $("drawAv").innerHTML="";$("drawAv").appendChild(av(me.callsign||me.username,44));
- $("drawName").textContent=me.callsign||me.username;
- $("drawUser").textContent="@"+me.username+(me.role==="admin"?" · ADMIN":"");
  $("setCallsign").value=me.callsign||"";
  $("drawerAdmin").style.display=me.role==="admin"?"":"none";
  $("drawer").classList.add("open");$("drawerOverlay").classList.add("on");
@@ -416,7 +447,6 @@ function openDrawer(){
 function closeDrawer(){$("drawer").classList.remove("open");$("drawerOverlay").classList.remove("on")}
 $("menu").onclick=openDrawer;
 $("drawerOverlay").onclick=closeDrawer;
-$("drawerGroup").onclick=async()=>{closeDrawer();await openOps();$("modeGrp").click()};
 $("drawerAdmin").onclick=()=>{closeDrawer();go("admin");setTitle("> COMMAND");loadUsers()};
 document.querySelectorAll("[data-th]").forEach(b=>b.onclick=()=>setTheme(b.dataset.th));
 $("setSaveName").onclick=()=>withBusy($("setSaveName"),async()=>{
@@ -424,7 +454,8 @@ $("setSaveName").onclick=()=>withBusy($("setSaveName"),async()=>{
  const {error}=await sb.from("profiles").update({callsign:v}).eq("id",me.id);
  if(error){toast(error.message,"err");return}
  me.callsign=v;profiles[me.id]=me;try{localStorage.setItem("rb_me",JSON.stringify(me))}catch(e){}
- $("drawName").textContent=v;toast("callsign updated");
+ toast("callsign updated");
+ if(typeof refreshProfilePanel==="function")refreshProfilePanel();
 });
 $("refresh").onclick=async()=>{$("refresh").classList.add("spin-ico");await loadRooms();$("refresh").classList.remove("spin-ico")};
 
@@ -566,7 +597,7 @@ async function loadRooms(){
   d.addEventListener("touchmove",()=>clearTimeout(lpT));
   d.addEventListener("contextmenu",e=>{e.preventDefault();openChatMenu(x.r.id,x.name)});
   d.onclick=()=>{if(supp){supp=false;return}openRoom(x.r.id,x.name,x.r.type)};l.appendChild(d)});
- if(!rows.length)l.innerHTML='<div class="item"><small>> no active links. tap ＋ to scan the network.</small></div>';
+ if(!rows.length)l.innerHTML='<div class="item"><small>> no active links. tap ADD below to scan the network.</small></div>';
 }
 
 async function openOps(){
@@ -847,28 +878,32 @@ function hideRecBar(){
  clearInterval(recTimerInt);recTimerInt=null;
  $("recBar").style.display="none";$("chatBar").style.display="flex";
 }
+let micStarting=false;
 async function startRec(){
- if(micRecording)return;
- if(VR){
-  try{
-   const {value:has}=await VR.hasAudioRecordingPermission();
-   if(!has){
-    const {value:granted}=await VR.requestAudioRecordingPermission();
-    if(!granted){toast("mic permission denied — try 📎 to attach a recording instead","err");return}
-   }
-   await VR.startRecording();
-   micRecording=true;recMode="native";showRecBar();
-  }catch(e){toast("mic unavailable: "+(e.message||e)+" — try 📎 to attach a recording instead","err")}
-  return;
- }
+ if(micRecording||micStarting)return;
+ micStarting=true;
  try{
-  micStream=await getMicStream();
-  const mime=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg"].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
-  recChunks=[];mediaRecorder=mime?new MediaRecorder(micStream,{mimeType:mime}):new MediaRecorder(micStream);
-  mediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data)};
-  mediaRecorder.start();
-  micRecording=true;recMode="web";showRecBar();
- }catch(e){toast("mic unavailable on this device: "+e.message+" — try 📎 to attach a recording instead","err")}
+  if(VR){
+   try{
+    const {value:has}=await VR.hasAudioRecordingPermission();
+    if(!has){
+     const {value:granted}=await VR.requestAudioRecordingPermission();
+     if(!granted){toast("mic permission denied — try 📎 to attach a recording instead","err");return}
+    }
+    await VR.startRecording();
+    micRecording=true;recMode="native";showRecBar();
+   }catch(e){toast("mic unavailable: "+(e.message||e)+" — try 📎 to attach a recording instead","err")}
+   return;
+  }
+  try{
+   micStream=await getMicStream();
+   const mime=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg"].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
+   recChunks=[];mediaRecorder=mime?new MediaRecorder(micStream,{mimeType:mime}):new MediaRecorder(micStream);
+   mediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data)};
+   mediaRecorder.start();
+   micRecording=true;recMode="web";showRecBar();
+  }catch(e){toast("mic unavailable on this device: "+e.message+" — try 📎 to attach a recording instead","err")}
+ }finally{micStarting=false}
 }
 async function finishRec(send){
  if(!micRecording)return;
@@ -894,7 +929,7 @@ async function finishRec(send){
  }
 }
 let micTouchHandled=false;
-$("micBtn").addEventListener("touchstart",e=>{micTouchHandled=true;startRec()});
+$("micBtn").addEventListener("touchstart",e=>{e.preventDefault();micTouchHandled=true;startRec()},{passive:false});
 $("micBtn").onclick=()=>{if(micTouchHandled){micTouchHandled=false;return}startRec()};
 $("recDelete").onclick=()=>finishRec(false);
 $("recSend").onclick=()=>finishRec(true);
@@ -937,5 +972,6 @@ $("mk").onclick=()=>withBusy($("mk"),async()=>{
 });
 start();
 </script>
+<script src="nav.js" defer></script>
 </body>
 </html>
