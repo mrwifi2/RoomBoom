@@ -70,3 +70,21 @@
 /* app-like momentum scroll, no visible scrollbars anywhere scroll happens */
 .list,#msgs{scrollbar-width:none;scroll-behavior:smooth}
 .list::-webkit-scrollbar,#msgs::-webkit-scrollbar{display:none}
+
+/* ---------- make-announcement form (admin) ---------- */
+#announcePanel textarea{width:100%;margin-top:10px;background:var(--panel2);border:1px solid var(--line);
+ border-radius:8px;color:var(--tx);padding:10px;font:inherit;resize:vertical}
+#announcePanel input{margin-top:10px}
+.annFileBtn{width:100%;text-align:left;border:1px dashed var(--line);border-radius:8px;padding:10px;
+ margin-top:10px;background:transparent;color:var(--dim);font:inherit}
+.annFileName{margin-top:6px;font-size:12px;color:var(--g);word-break:break-all}
+#annSend{margin-top:16px;width:100%}
+
+/* ---------- announcement cards (notification centre > announcements tab) ---------- */
+.annCard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--panel2);animation:opin .3s ease-out both}
+.annCard .at{display:block;color:var(--dim);font-size:11px;margin-bottom:4px}
+.annCard .ttl{font-weight:bold;color:var(--g);margin-bottom:4px;display:block}
+.annCard .bd{white-space:pre-wrap;font-size:13px;line-height:1.5;color:var(--tx)}
+.annCard a{color:var(--c);display:block;margin-top:8px;word-break:break-all;font-size:12px}
+.annCard .fileLink{display:inline-flex;align-items:center;gap:6px;margin-top:8px;border:1px solid var(--line);
+ border-radius:8px;padding:6px 10px;font-size:12px;color:var(--c);text-decoration:none}
