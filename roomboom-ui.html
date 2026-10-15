@@ -973,11 +973,16 @@ async function loadUsers(){
   d.querySelector("small").textContent="@"+u.username+" · "+u.role+(u.is_banned?" · BANNED":"");
   const bb=d.querySelector(".b");bb.textContent=u.is_banned?"UNBAN":"BAN";
   if(u.id===me.id){["b","rn","p","del"].forEach(c=>d.querySelector("."+c).style.display="none")}
-  bb.onclick=()=>withBusy(bb,async()=>{await adminCall({action:"ban",id:u.id,banned:!u.is_banned});loadUsers()});
+  bb.onclick=()=>withBusy(bb,async()=>{const willBan=!u.is_banned;await adminCall({action:"ban",id:u.id,banned:willBan});
+   sb.rpc("notify_user",{p_user_id:u.id,p_type:"admin_action",p_title:willBan?"🚫 account banned":"✅ account unbanned",p_body:willBan?"your account was banned by an admin":"your account was unbanned — welcome back"}).then(()=>{});
+   loadUsers()});
   d.querySelector(".rn").onclick=async()=>{const nu=await modal({title:"> new username (a-z, 0-9, _)",placeholder:"username",value:u.username});if(!nu)return;
-   await withBusy(d.querySelector(".rn"),async()=>{const x=await adminCall({action:"rename",id:u.id,username:nu});if(x.error)toast(x.error,"err");else{toast("username updated");loadUsers()}})};
+   await withBusy(d.querySelector(".rn"),async()=>{const x=await adminCall({action:"rename",id:u.id,username:nu});if(x.error)toast(x.error,"err");else{toast("username updated");
+    sb.rpc("notify_user",{p_user_id:u.id,p_type:"admin_action",p_title:"🛡 username changed",p_body:"your username was changed to @"+nu+" by an admin"}).then(()=>{});
+    loadUsers()}})};
   d.querySelector(".p").onclick=async()=>{const pw=await modal({title:"> new password (min 6)",placeholder:"password"});if(!pw)return;
-   await withBusy(d.querySelector(".p"),async()=>{const x=await adminCall({action:"password",id:u.id,password:pw});toast(x.error||"password updated",x.error?"err":undefined)})};
+   await withBusy(d.querySelector(".p"),async()=>{const x=await adminCall({action:"password",id:u.id,password:pw});toast(x.error||"password updated",x.error?"err":undefined);
+    if(!x.error)sb.rpc("notify_user",{p_user_id:u.id,p_type:"admin_action",p_title:"🛡 password changed",p_body:"your password was reset by an admin"}).then(()=>{})})};
   d.querySelector(".del").onclick=async()=>{const ok=await modal({title:"> delete @"+u.username+"? this cannot be undone",okText:"DELETE"});if(!ok)return;
    await withBusy(d.querySelector(".del"),async()=>{const x=await adminCall({action:"delete",id:u.id});if(x.error)toast(x.error,"err");else{toast("operative removed");loadUsers()}})};
   l.appendChild(d)});

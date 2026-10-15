@@ -88,3 +88,7 @@
 .annCard a{color:var(--c);display:block;margin-top:8px;word-break:break-all;font-size:12px}
 .annCard .fileLink{display:inline-flex;align-items:center;gap:6px;margin-top:8px;border:1px solid var(--line);
  border-radius:8px;padding:6px 10px;font-size:12px;color:var(--c);text-decoration:none}
+
+/* ---------- personal notification cards (notification centre > notifications tab) ---------- */
+.notifCard.unread{border-color:var(--g);background:rgba(0,255,156,.06)}
+.notifCard.unread .ttl{color:var(--g)}
