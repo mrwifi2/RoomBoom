@@ -55,9 +55,10 @@ $("navHome").onclick=()=>{
 };
 $("navProfile").onclick=()=>openProfilePanel();
 
-/* ---------- notification centre: notifications (placeholder) + announcements
-   (real, wired to Supabase "announcements" table) — phase 2 ---------- */
+/* ---------- notification centre: notifications + announcements
+   (both real, wired to Supabase "notifications" / "announcements" tables) ---------- */
 let annList=[];
+let notifList=[];
 function annTime(iso){return typeof fmt==="function"?fmt(iso):new Date(iso).toLocaleString()}
 function renderAnnCard(a){
  const d=document.createElement("div");d.className="annCard";
@@ -85,13 +86,7 @@ async function loadAnnouncements(){
  if(!annList.length)body.innerHTML='<div class="panelEmpty">&gt; no announcements yet<br><small style="opacity:.7">admin announcements will appear here</small></div>';
  else{body.innerHTML="";annList.forEach(a=>body.appendChild(renderAnnCard(a)))}
  try{if(annList.length)localStorage.setItem("rb_ann_seen",annList[0].created_at)}catch(e){}
- $("notifDot").style.display="none";
-}
-async function checkAnnouncementsDot(){
- const {data}=await sb.from("announcements").select("created_at").order("created_at",{ascending:false}).limit(1);
- const latest=data&&data[0];if(!latest)return;
- let seen=null;try{seen=localStorage.getItem("rb_ann_seen")}catch(e){}
- $("notifDot").style.display=(!seen||new Date(latest.created_at)>new Date(seen))?"":"none";
+ checkBellDot();
 }
 function subscribeAnnouncements(){
  sb.channel("ann").on("postgres_changes",{event:"INSERT",schema:"public",table:"announcements"},p=>{
@@ -102,11 +97,88 @@ function subscribeAnnouncements(){
   }
  }).subscribe();
 }
+
+/* ---------- personal notifications (new message / group add / admin action)
+   wired to Supabase "notifications" table — phase 2b ---------- */
+function notifIcon(t){return t==="message"?"💬":t==="group_add"?"👥":"🛡"}
+function renderNotifCard(n){
+ const d=document.createElement("div");d.className="annCard notifCard"+(n.read_at?"":" unread");
+ const at=document.createElement("span");at.className="at";at.textContent=annTime(n.created_at);
+ const ttl=document.createElement("span");ttl.className="ttl";ttl.textContent=notifIcon(n.type)+" "+(n.title||"");
+ d.appendChild(at);d.appendChild(ttl);
+ if(n.body){const bd=document.createElement("div");bd.className="bd";bd.textContent=n.body;d.appendChild(bd)}
+ if((n.type==="message"||n.type==="group_add")&&n.room_id){
+  d.style.cursor="pointer";
+  d.onclick=()=>{closeNotifPanel();openRoomById(n.room_id)};
+ }
+ return d;
+}
+async function loadNotifications(){
+ const body=$("notifBody");
+ body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
+ const {data,error}=await sb.from("notifications").select("*").eq("user_id",me.id).order("created_at",{ascending:false}).limit(50);
+ if(error){body.innerHTML='<div class="panelEmpty">&gt; failed to load notifications<br><small style="opacity:.7">'+error.message+'</small></div>';return}
+ notifList=data||[];
+ if(!notifList.length)body.innerHTML='<div class="panelEmpty">&gt; no notifications yet<br><small style="opacity:.7">new messages, group adds &amp; account updates will appear here</small></div>';
+ else{body.innerHTML="";notifList.forEach(n=>body.appendChild(renderNotifCard(n)))}
+ const unreadIds=notifList.filter(n=>!n.read_at).map(n=>n.id);
+ if(unreadIds.length){
+  try{await sb.from("notifications").update({read_at:new Date().toISOString()}).in("id",unreadIds).eq("user_id",me.id)}catch(e){}
+  notifList.forEach(n=>{if(!n.read_at)n.read_at=new Date().toISOString()});
+ }
+ checkBellDot();
+}
+async function openRoomById(roomId){
+ if(!roomId)return;
+ try{
+  const {data:r,error}=await sb.from("rooms").select("*").eq("id",roomId).single();
+  if(error||!r){toast("chat not found","err");return}
+  let name=r.name||"room";
+  if(r.type==="dm"){
+   const {data:mm}=await sb.from("room_members").select("user_id").eq("room_id",roomId);
+   const otherM=(mm||[]).find(x=>x.user_id!==me.id);
+   if(otherM){
+    if(typeof fetchProfiles==="function")await fetchProfiles();
+    name=(profiles[otherM.user_id]&&(profiles[otherM.user_id].callsign||profiles[otherM.user_id].username))||"?";
+   }
+  }
+  openRoom(r.id,name,r.type);
+ }catch(e){toast("could not open chat","err")}
+}
+function subscribeNotifications(){
+ sb.channel("notif_"+me.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+me.id},p=>{
+  toast(notifIcon(p.new.type)+" "+(p.new.title||"new notification"));
+  $("notifDot").style.display="";
+  if($("notifPanel").classList.contains("on")&&$("tabNotif").classList.contains("active")){
+   notifList.unshift(p.new);$("notifBody").prepend(renderNotifCard(p.new));
+   sb.from("notifications").update({read_at:new Date().toISOString()}).eq("id",p.new.id).then(()=>{});
+  }
+ }).subscribe();
+}
+
+/* ---------- combined bell-dot: lit if an unseen announcement OR any unread notification ---------- */
+async function checkBellDot(){
+ let show=false;
+ try{
+  const {data}=await sb.from("announcements").select("created_at").order("created_at",{ascending:false}).limit(1);
+  const latest=data&&data[0];
+  let seen=null;try{seen=localStorage.getItem("rb_ann_seen")}catch(e){}
+  if(latest&&(!seen||new Date(latest.created_at)>new Date(seen)))show=true;
+ }catch(e){}
+ if(!show){
+  try{
+   const {count}=await sb.from("notifications").select("id",{count:"exact",head:true}).eq("user_id",me.id).is("read_at",null);
+   if(count>0)show=true;
+  }catch(e){}
+ }
+ $("notifDot").style.display=show?"":"none";
+}
+
 (function(){
  let inited=false;
  function tryInit(){
   if(inited||$("app").style.display!=="flex")return;
-  inited=true;checkAnnouncementsDot();subscribeAnnouncements();
+  inited=true;checkBellDot();subscribeAnnouncements();subscribeNotifications();
  }
  new MutationObserver(tryInit).observe($("app"),{attributes:true,attributeFilter:["style"]});
  tryInit();
@@ -114,7 +186,7 @@ function subscribeAnnouncements(){
 
 function openNotifPanel(){
  $("notifOverlay").classList.add("on");$("notifPanel").classList.add("on");
- if($("notifDot").style.display!=="none")switchNotifTab("ann");
+ switchNotifTab($("tabAnn").classList.contains("active")?"ann":"notif");
 }
 function closeNotifPanel(){$("notifOverlay").classList.remove("on");$("notifPanel").classList.remove("on")}
 $("notifBtn").onclick=openNotifPanel;
@@ -123,7 +195,7 @@ $("notifOverlay").onclick=closeNotifPanel;
 function switchNotifTab(tab){
  $("tabNotif").classList.toggle("active",tab==="notif");
  $("tabAnn").classList.toggle("active",tab==="ann");
- if(tab==="notif")$("notifBody").innerHTML='<div class="panelEmpty">&gt; no notifications yet</div>';
+ if(tab==="notif")loadNotifications();
  else loadAnnouncements();
 }
 $("tabNotif").onclick=()=>switchNotifTab("notif");
