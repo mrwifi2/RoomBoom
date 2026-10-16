@@ -60,6 +60,15 @@ $("navProfile").onclick=()=>openProfilePanel();
 let annList=[];
 let notifList=[];
 function annTime(iso){return typeof fmt==="function"?fmt(iso):new Date(iso).toLocaleString()}
+/* open any URL in the phone's default browser (Capacitor App.openUrl -> Android ACTION_VIEW) */
+function normUrl(u){u=(u||"").trim();if(!u)return "";return /^[a-z][a-z0-9+.-]*:/i.test(u)?u:"https://"+u}
+function openExternal(url){
+ url=normUrl(url);if(!url)return;
+ const AP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;
+ if(AP&&AP.openUrl){AP.openUrl({url}).catch(()=>window.open(url,"_system"));return}
+ window.open(url,"_blank");
+}
+function annFileUrl(path){return sb.storage.from("announcements").getPublicUrl(path).data.publicUrl}
 function renderAnnCard(a){
  const d=document.createElement("div");d.className="annCard";
  const at=document.createElement("span");at.className="at";at.textContent=annTime(a.created_at);
@@ -67,12 +76,13 @@ function renderAnnCard(a){
  const bd=document.createElement("div");bd.className="bd";bd.textContent=a.body||"";
  d.appendChild(at);d.appendChild(ttl);d.appendChild(bd);
  if(a.link){
-  const link=document.createElement("a");link.href=a.link;link.target="_blank";link.rel="noopener";link.textContent="🔗 "+a.link;
+  const link=document.createElement("a");link.href="#";link.textContent="🔗 "+a.link;
+  link.onclick=e=>{e.preventDefault();openExternal(a.link)};
   d.appendChild(link);
  }
  if(a.file_path){
-  const fl=document.createElement("a");fl.className="fileLink";fl.href="#";fl.textContent="📎 "+(a.file_name||"download file");
-  fl.onclick=async e=>{e.preventDefault();const u=await mediaUrl(a.file_path);if(u)window.open(u,"_blank");else toast("file load failed","err")};
+  const fl=document.createElement("a");fl.className="fileLink";fl.href="#";fl.textContent="⬇ "+(a.file_name||"download file");
+  fl.onclick=e=>{e.preventDefault();openExternal(annFileUrl(a.file_path))};
   d.appendChild(fl);
  }
  return d;
@@ -224,13 +234,13 @@ $("annSend").onclick=()=>withBusy($("annSend"),async()=>{
  try{
   let file_path=null,file_name=null;
   if(annFile){
-   const ext=annFile.name.split(".").pop()||"bin";
-   const path="announcements/"+crypto.randomUUID()+"."+ext;
-   const {error:upErr}=await sb.storage.from("media").upload(path,annFile,{contentType:annFile.type||"application/octet-stream"});
+   const safe=annFile.name.replace(/[^A-Za-z0-9._-]+/g,"_");
+   const path=crypto.randomUUID()+"/"+safe;
+   const {error:upErr}=await sb.storage.from("announcements").upload(path,annFile,{contentType:annFile.type||"application/octet-stream"});
    if(upErr)throw upErr;
    file_path=path;file_name=annFile.name;
   }
-  const {error}=await sb.from("announcements").insert({created_by:me.id,title:title||"announcement",body:body||null,link:link||null,file_path,file_name});
+  const {error}=await sb.from("announcements").insert({created_by:me.id,title:title||"announcement",body:body||null,link:normUrl(link)||null,file_path,file_name});
   if(error)throw error;
   toast("announcement sent");closeAnnouncePanel();
   if($("notifPanel").classList.contains("on")&&$("tabAnn").classList.contains("active"))loadAnnouncements();
