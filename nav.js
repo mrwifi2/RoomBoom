@@ -51,6 +51,7 @@ $("navHome").onclick=()=>{
  if(typeof closeDrawer==="function")closeDrawer();
  closeNotifPanel();closeProfilePanel();
  if($("sheet"))$("sheet").style.display="none";
+ if(curView==="rooms"){const l=$("rooms");if(l)l.scrollTo({top:0,behavior:"smooth"});return}
  viewStack=["rooms"];show("rooms");afterNav("rooms");
 };
 $("navProfile").onclick=()=>openProfilePanel();
@@ -87,17 +88,23 @@ function renderAnnCard(a){
  }
  return d;
 }
+/* repaint a list only when its content really changed (no flash on cache -> network refresh) */
+function paintList(body,list,render,kind){
+ const sig=kind+":"+list.map(x=>x.id).join(",");
+ if(body.dataset.sig===sig&&body.children.length)return;
+ body.dataset.sig=sig;body.innerHTML="";list.forEach(x=>body.appendChild(render(x)));
+}
 async function loadAnnouncements(){
  const body=$("notifBody");
  const cached=RBC.get("ann");
- if(cached&&cached.length){annList=cached;body.innerHTML="";annList.forEach(a=>body.appendChild(renderAnnCard(a)))}
- else body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
+ if(cached&&cached.length){annList=cached;paintList(body,annList,renderAnnCard,"a")}
+ else{body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; loading...</div>'}
  const {data,error}=await sb.from("announcements").select("*").order("created_at",{ascending:false}).limit(50);
  if(error&&cached&&cached.length)return;
- if(error){body.innerHTML='<div class="panelEmpty">&gt; failed to load announcements<br><small style="opacity:.7">'+error.message+'</small></div>';return}
+ if(error){body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; failed to load announcements<br><small style="opacity:.7">'+error.message+'</small></div>';return}
  annList=data||[];RBC.set("ann",annList);
- if(!annList.length)body.innerHTML='<div class="panelEmpty">&gt; no announcements yet<br><small style="opacity:.7">admin announcements will appear here</small></div>';
- else{body.innerHTML="";annList.forEach(a=>body.appendChild(renderAnnCard(a)))}
+ if(!annList.length){body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; no announcements yet<br><small style="opacity:.7">admin announcements will appear here</small></div>'}
+ else paintList(body,annList,renderAnnCard,"a");
  try{if(annList.length)localStorage.setItem("rb_ann_seen",annList[0].created_at)}catch(e){}
  checkBellDot();
 }
@@ -106,7 +113,7 @@ function subscribeAnnouncements(){
   toast("new announcement: "+(p.new.title||""));
   $("notifDot").style.display="";
   if($("notifPanel").classList.contains("on")&&$("tabAnn").classList.contains("active")){
-   annList.unshift(p.new);$("notifBody").prepend(renderAnnCard(p.new));
+   annList.unshift(p.new);$("notifBody").prepend(renderAnnCard(p.new));$("notifBody").dataset.sig="a:"+annList.map(x=>x.id).join(",");
   }
  }).subscribe();
 }
@@ -129,14 +136,14 @@ function renderNotifCard(n){
 async function loadNotifications(){
  const body=$("notifBody");
  const cached=RBC.get("notifs");
- if(cached&&cached.length){notifList=cached;body.innerHTML="";notifList.forEach(n=>body.appendChild(renderNotifCard(n)))}
- else body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
+ if(cached&&cached.length){notifList=cached;paintList(body,notifList,renderNotifCard,"n")}
+ else{body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; loading...</div>'}
  const {data,error}=await sb.from("notifications").select("*").eq("user_id",me.id).order("created_at",{ascending:false}).limit(50);
  if(error&&cached&&cached.length)return;
- if(error){body.innerHTML='<div class="panelEmpty">&gt; failed to load notifications<br><small style="opacity:.7">'+error.message+'</small></div>';return}
+ if(error){body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; failed to load notifications<br><small style="opacity:.7">'+error.message+'</small></div>';return}
  notifList=data||[];
- if(!notifList.length)body.innerHTML='<div class="panelEmpty">&gt; no notifications yet<br><small style="opacity:.7">new messages, group adds &amp; account updates will appear here</small></div>';
- else{body.innerHTML="";notifList.forEach(n=>body.appendChild(renderNotifCard(n)))}
+ if(!notifList.length){body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; no notifications yet<br><small style="opacity:.7">new messages, group adds &amp; account updates will appear here</small></div>'}
+ else paintList(body,notifList,renderNotifCard,"n")
  const unreadIds=notifList.filter(n=>!n.read_at).map(n=>n.id);
  if(unreadIds.length){
   try{await sb.from("notifications").update({read_at:new Date().toISOString()}).in("id",unreadIds).eq("user_id",me.id)}catch(e){}
@@ -167,7 +174,7 @@ function subscribeNotifications(){
   toast(p.new.title||"new notification");
   $("notifDot").style.display="";
   if($("notifPanel").classList.contains("on")&&$("tabNotif").classList.contains("active")){
-   notifList.unshift(p.new);$("notifBody").prepend(renderNotifCard(p.new));
+   notifList.unshift(p.new);$("notifBody").prepend(renderNotifCard(p.new));$("notifBody").dataset.sig="n:"+notifList.map(x=>x.id).join(",");
    sb.from("notifications").update({read_at:new Date().toISOString()}).eq("id",p.new.id).then(()=>{});
   }
  }).subscribe();
