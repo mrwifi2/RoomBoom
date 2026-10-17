@@ -1,0 +1,123 @@
+/* ===== RoomBoom — UI polish layer ================================================
+   icons, launch animation, view transitions, action sheets, modal, skeletons,
+   pull-to-refresh, gesture helpers. Loaded after nav.css so it can refine it. ===== */
+
+/* ---------- icons ---------- */
+[data-ico]{display:inline-flex;align-items:center;justify-content:center;line-height:0;flex:none}
+.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+.i.sm{width:15px;height:15px}
+.i.xs{width:13px;height:13px;stroke-width:2}
+.icon-btn{font-size:0}
+.icon-btn .i{width:20px;height:20px}
+.bar .icon-btn .i{width:21px;height:21px}
+.lb{line-height:1.2}
+.inl{display:inline-flex;align-items:center;gap:6px;vertical-align:middle}
+.inl .i{width:14px;height:14px}
+
+/* ---------- launch: tiny icon pop, no waiting ---------- */
+#splash{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:var(--bg);transition:opacity .16s ease-out}
+#splash.out{opacity:0;pointer-events:none}
+#iconShape{filter:drop-shadow(0 0 12px rgba(0,255,156,.3));animation:iconPop .34s cubic-bezier(.2,.9,.3,1.25) both}
+#sDot{transform-box:fill-box;transform-origin:center;animation:dotPop .3s .1s cubic-bezier(.3,1.7,.5,1) both}
+@keyframes iconPop{0%{opacity:0;transform:scale(.72)}55%{opacity:1;transform:scale(1.07)}100%{opacity:1;transform:scale(1)}}
+@keyframes dotPop{0%{transform:scale(0)}100%{transform:scale(1)}}
+
+/* ---------- screen transitions: soft push, no clip-path wipe ---------- */
+.view.on{animation:vin .24s cubic-bezier(.22,.8,.3,1)}
+@keyframes vin{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+#app.noanim .view.on{animation:none}
+
+/* ---------- header ---------- */
+header{padding:8px 10px;min-height:56px}
+header h2{font-size:16px}
+
+/* ---------- action sheet rows ---------- */
+#sheet{gap:2px;padding:20px 8px calc(10px + env(safe-area-inset-bottom));will-change:transform}
+#sheet>button{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;background:transparent;border-radius:12px;padding:14px 14px;font-size:14px}
+#sheet>button:active{background:rgba(255,255,255,.07);transform:none}
+#sheet>button .i{width:20px;height:20px;color:var(--dim)}
+#sheet>button.danger{color:var(--r)!important;border:none!important}
+#sheet>button.danger .i{color:var(--r)}
+#sheet>button:disabled{opacity:.4}
+.sheetGhost{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel);border-top:1px solid var(--line);border-radius:14px 14px 0 0;
+ padding:20px 8px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:2px;pointer-events:none;
+ animation:sheetOut .2s cubic-bezier(.4,0,1,1) forwards}
+.sheetGhost>button{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;background:transparent;padding:14px 14px}
+@keyframes sheetOut{to{transform:translateY(100%)}}
+
+/* ---------- modal: fade + scale in/out ---------- */
+#modalWrap{display:flex;opacity:0;pointer-events:none;transition:opacity .18s ease}
+#modalWrap.on{opacity:1;pointer-events:auto}
+#modalBox{animation:none;transform:scale(.94) translateY(8px);transition:transform .22s cubic-bezier(.22,.9,.3,1.1)}
+#modalWrap.on #modalBox{transform:none}
+
+/* ---------- skeleton rows (home never shows a text loader) ---------- */
+.sk{display:flex;align-items:center;gap:12px;padding:11px 14px}
+.sk .a{width:42px;height:42px;border-radius:8px;flex:none}
+.sk .l{flex:1;display:flex;flex-direction:column;gap:9px}
+.sk .l i{display:block;height:10px;border-radius:5px}
+.sk .a,.sk .l i{background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.09),rgba(255,255,255,.04));background-size:200% 100%;animation:shim 1.3s linear infinite}
+@keyframes shim{to{background-position:-200% 0}}
+
+/* ---------- pull to refresh ---------- */
+#v-rooms{position:relative;overflow:hidden}
+#ptr{position:absolute;left:50%;top:0;width:34px;height:34px;margin-left:-17px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);
+ display:flex;align-items:center;justify-content:center;opacity:0;transform:translateY(-44px);pointer-events:none;z-index:3;color:var(--g)}
+#ptr .i{width:17px;height:17px}
+#ptr.spinning .i{animation:spin .8s linear infinite}
+
+/* ---------- gesture helpers ---------- */
+.sidePanel,#sheet,#drawer{will-change:transform}
+.panelBody{overscroll-behavior:contain;touch-action:pan-y}
+#drawer{overscroll-behavior:contain}
+.view{will-change:auto}
+
+/* ---------- chat bar / bubbles polish ---------- */
+.bar{align-items:center;gap:6px}
+#txt{border-radius:20px;padding:10px 14px}
+.tk{display:inline-flex;vertical-align:middle;margin-left:2px}
+.tk .i{width:14px;height:14px}
+.tk.seen{color:var(--c)}
+#tobot{display:none;align-items:center;gap:6px;padding:7px 12px}
+#tobot .i{width:15px;height:15px}
+.m .q{display:flex;align-items:center;gap:5px}
+.m .t{display:inline-flex;align-items:center;gap:4px}
+.m.gone .x{display:flex;align-items:center;gap:6px}
+.pv{display:flex;align-items:center;gap:5px}
+.pv .i{width:13px;height:13px;flex:none}
+.pv span.tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- toast / net banner icons ---------- */
+.toast{display:flex;align-items:center;gap:8px}
+.toast .i{width:16px;height:16px}
+#net{display:none;align-items:center;justify-content:center;gap:6px}
+#net.bad,#net.ok{display:flex}
+#net .i{width:13px;height:13px}
+
+/* ---------- bottom nav icons ---------- */
+#bnav .ic{display:flex;align-items:center;justify-content:center}
+#bnav .i{width:22px;height:22px}
+#bnav button.active .i{stroke-width:2.2}
+
+/* ---------- cards in notification centre ---------- */
+.annCard .ttl{display:flex;align-items:center;gap:8px}
+.annCard .ttl .i{width:16px;height:16px}
+.annCard a,.annCard .fileLink{display:inline-flex;align-items:center;gap:6px}
+.annCard a{display:flex}
+.annCard a .i,.annCard .fileLink .i{width:14px;height:14px}
+.panelTabs button{display:flex;align-items:center;justify-content:center;gap:7px}
+.panelTabs button .i{width:16px;height:16px}
+.annFileBtn,.annFileName{display:flex;align-items:center;gap:8px}
+#annSend,#ppLogout,#drawer>button{display:flex;align-items:center;justify-content:center;gap:10px}
+#drawer>button{justify-content:flex-start}
+.modebar button{display:flex;align-items:center;justify-content:center;gap:7px}
+.modebar button .i{width:16px;height:16px}
+#ctx button{width:30px;height:30px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center}
+#ctx .i{width:15px;height:15px}
+#ctx span{display:flex;align-items:center;gap:8px}
+
+/* back-swipe: the screen being revealed stays put behind */
+.backing{box-shadow:-14px 0 28px rgba(0,0,0,.55);background:var(--bg)}
+
+/* chat opens instantly: no per-bubble entrance when a whole screen is painted at once */
+#msgs.noanim .m{animation:none}

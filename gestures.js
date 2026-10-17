@@ -1,0 +1,254 @@
+/* ===== RoomBoom gesture engine ====================================================
+   Native-feeling touch gestures, no libraries:
+   - bottom sheets / panels: drag down from ANYWHERE (hands over to scrolling when the
+     content isn't at the top), the dim backdrop follows your finger, flick to dismiss
+   - sidebar: swipe right on home to open it, swipe left (anywhere) to close; it tracks the finger
+   - back-swipe: from the left edge of chat/operatives/command the screen slides away
+     and the previous screen is revealed underneath
+   - pull-to-refresh on the chat list with a little spinner
+   - action sheet closes with a slide-out animation instead of vanishing
+   Loaded (defer) after nav.js so $, curView, viewStack, backNav, openDrawer etc. exist. */
+(function(){
+ "use strict";
+ const EASE="cubic-bezier(.22,.8,.3,1)";
+ const SPRING="cubic-bezier(.3,1.3,.5,1)";
+ const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+
+ /* velocity (px/ms) over the last ~100ms */
+ function VT(){
+  const s=[];
+  return{push(p,t){s.push([p,t]);while(s.length>1&&t-s[0][1]>100)s.shift()},
+   v(){if(s.length<2)return 0;const a=s[0],b=s[s.length-1],dt=b[1]-a[1];return dt?(b[0]-a[0])/dt:0}};
+ }
+ function scrollerOf(t,root){
+  for(let e=t;e&&e!==document.body;e=e.parentElement){
+   if(e.scrollHeight>e.clientHeight+1){
+    const o=getComputedStyle(e).overflowY;
+    if(o==="auto"||o==="scroll")return e;
+   }
+   if(e===root)break;
+  }
+  return null;
+ }
+ const isField=t=>t&&t.closest&&t.closest("input,textarea,[contenteditable='true']");
+ const anyModal=()=>$("modalWrap").classList.contains("on");
+ function anyOverlayOpen(){
+  return $("drawer").classList.contains("open")||$("notifPanel").classList.contains("on")||$("profilePanel").classList.contains("on")||
+   $("announcePanel").classList.contains("on")||$("sheet").style.display==="flex"||anyModal();
+ }
+
+ /* ------------------------------------------------------------------ bottom sheets */
+ let sheetGesture=false; /* true while a drag-close is running, so the ghost animation doesn't double up */
+ function sheetDrag(cfg){
+  const el=cfg.el,scrim=cfg.scrim;let st=null;
+  function end(ev){
+   if(!st)return;const s=st;st=null;
+   if(s.mode!==1)return;
+   const d=s.d,h=el.offsetHeight||300,v=ev?s.vt.v():0;
+   const close=d>h*.33||(v>.4&&d>12);
+   if(close){
+    const dur=clamp((h-d)/Math.max(v,.9),140,300);
+    sheetGesture=true;
+    el.style.transition="transform "+dur+"ms "+EASE;el.style.transform="translateY(100%)";
+    if(scrim){scrim.style.transition="opacity "+dur+"ms linear";scrim.style.opacity="0"}
+    setTimeout(()=>{
+     cfg.close();
+     el.style.transition=el.style.transform="";
+     if(scrim){scrim.style.transition=scrim.style.opacity=""}
+     sheetGesture=false;
+    },dur+12);
+   }else{
+    el.style.transition="transform 320ms "+SPRING;el.style.transform="translateY(0)";
+    if(scrim){scrim.style.transition="opacity 260ms ease";scrim.style.opacity="1"}
+    setTimeout(()=>{el.style.transition=el.style.transform="";if(scrim){scrim.style.transition=scrim.style.opacity=""}},330);
+   }
+  }
+  function engage(s,y){s.mode=1;s.base=y;el.style.transition="none";if(scrim)scrim.style.transition="none"}
+  el.addEventListener("touchstart",e=>{
+   if(!cfg.isOpen()||e.touches.length!==1||isField(e.target)&&e.target.tagName==="TEXTAREA"){st=null;return}
+   const t=e.touches[0];
+   st={x:t.clientX,y:t.clientY,ly:t.clientY,mode:0,d:0,base:0,vt:VT(),sc:scrollerOf(e.target,el)};
+   st.vt.push(t.clientY,e.timeStamp);
+  },{passive:true});
+  el.addEventListener("touchmove",e=>{
+   if(!st)return;
+   const t=e.touches[0],dx=t.clientX-st.x,dy=t.clientY-st.y,atTop=!st.sc||st.sc.scrollTop<=0;
+   if(st.mode===0){
+    if(Math.abs(dx)<8&&Math.abs(dy)<8){st.ly=t.clientY;return}
+    if(Math.abs(dy)>Math.abs(dx)&&dy>0&&atTop)engage(st,t.clientY);
+    else st.mode=-1;
+   }else if(st.mode===-1){
+    /* hand-off: content scrolled back to the top and the finger keeps moving down */
+    if(st.sc&&st.sc.scrollTop<=0&&t.clientY>st.ly+1&&Math.abs(dy)>Math.abs(dx))engage(st,t.clientY);
+   }
+   st.ly=t.clientY;
+   if(st.mode!==1)return;
+   if(e.cancelable)e.preventDefault();
+   const raw=t.clientY-st.base;
+   st.d=raw<0?raw*.18:raw;
+   st.vt.push(t.clientY,e.timeStamp);
+   el.style.transform="translateY("+st.d+"px)";
+   if(scrim)scrim.style.opacity=String(clamp(1-Math.max(0,st.d)/(el.offsetHeight||300),0,1));
+  },{passive:false});
+  el.addEventListener("touchend",e=>end(e),{passive:true});
+  el.addEventListener("touchcancel",()=>end(null),{passive:true});
+ }
+ sheetDrag({el:$("notifPanel"),scrim:$("notifOverlay"),isOpen:()=>$("notifPanel").classList.contains("on"),close:closeNotifPanel});
+ sheetDrag({el:$("profilePanel"),scrim:$("profileOverlay"),isOpen:()=>$("profilePanel").classList.contains("on"),close:closeProfilePanel});
+ sheetDrag({el:$("announcePanel"),scrim:$("announceOverlay"),isOpen:()=>$("announcePanel").classList.contains("on"),close:closeAnnouncePanel});
+ sheetDrag({el:$("sheet"),scrim:$("sheetOverlay"),isOpen:()=>$("sheet").style.display==="flex",close:()=>{$("sheet").style.display="none"}});
+
+ /* action sheet: any close (tap on option, backdrop, back) slides out instead of vanishing */
+ (function(){
+  const sheet=$("sheet");let wasOpen=false;
+  new MutationObserver(()=>{
+   const open=sheet.style.display==="flex";
+   if(wasOpen&&!open&&!sheetGesture&&sheet._last){
+    const g=document.createElement("div");g.className="sheetGhost";g.innerHTML=sheet._last;
+    $("app").appendChild(g);setTimeout(()=>g.remove(),230);
+   }
+   if(open)sheet._last=sheet.innerHTML;
+   wasOpen=open;
+  }).observe(sheet,{attributes:true,attributeFilter:["style"]});
+  /* keep a copy of the rows while open (children are rebuilt just before display:flex) */
+  new MutationObserver(()=>{if(sheet.style.display==="flex")sheet._last=sheet.innerHTML}).observe(sheet,{childList:true});
+ })();
+
+ /* ------------------------------------------------------------------ sidebar + back-swipe */
+ const drawer=$("drawer"),dov=$("drawerOverlay");
+ const EDGE=64;
+ let g=null; /* current horizontal gesture */
+
+ function drawerPos(g,x){
+  const W=g.W,dx=x-g.base;
+  g.p=g.kind==="open"?clamp(dx/W,0,1):clamp(1+dx/W,0,1);
+  drawer.style.transform="translateX("+(-W*(1-g.p))+"px)";
+  dov.style.opacity=String(g.p);
+ }
+ function finishDrawer(g,ev){
+  const v=ev?g.vt.v():0;
+  const target=v>.45?true:v<-.45?false:g.p>.5;
+  const W=g.W,dur=clamp(Math.abs((target?1-g.p:g.p)*W)/Math.max(Math.abs(v),.8),140,320);
+  drawer.style.transition="transform "+dur+"ms "+EASE;dov.style.transition="opacity "+dur+"ms linear";
+  drawer.style.transform=target?"translateX(0)":"translateX(-100%)";dov.style.opacity=target?"1":"0";
+  setTimeout(()=>{
+   if(!target)closeDrawer();
+   drawer.style.transition=drawer.style.transform="";dov.style.transition=dov.style.opacity="";dov.style.pointerEvents="";
+  },dur+12);
+ }
+
+ function backPrep(g){
+  const cur=$("v-"+curView),prev=$("v-"+viewStack[viewStack.length-2]);
+  g.cur=cur;g.prev=prev;g.top=cur.offsetTop;
+  Object.assign(prev.style,{display:"flex",position:"absolute",left:"0",right:"0",top:g.top+"px",bottom:"0",zIndex:"0",
+   transform:"translateX(-22%)",opacity:".55",animation:"none"});
+  cur.classList.add("backing");
+  Object.assign(cur.style,{position:"relative",zIndex:"2",animation:"none",willChange:"transform"});
+ }
+ function backPos(g,x){
+  const W=g.W,dx=clamp(x-g.base,0,W),p=dx/W;g.dx=dx;
+  g.cur.style.transform="translateX("+dx+"px)";
+  g.prev.style.transform="translateX("+(-22+22*p)+"%)";g.prev.style.opacity=String(.55+.45*p);
+ }
+ function backClean(g){
+  g.cur.classList.remove("backing");g.cur.style.cssText="";g.prev.style.cssText="";
+ }
+ function finishBack(g,ev){
+  const W=g.W,v=ev?g.vt.v():0,commit=g.dx>W*.38||(v>.5&&g.dx>16);
+  const dur=clamp((commit?W-g.dx:g.dx)/Math.max(Math.abs(v),.9),150,300);
+  g.cur.style.transition="transform "+dur+"ms "+EASE;g.prev.style.transition="transform "+dur+"ms "+EASE+",opacity "+dur+"ms linear";
+  g.cur.style.transform=commit?"translateX(100%)":"translateX(0)";
+  g.prev.style.transform=commit?"translateX(0)":"translateX(-22%)";g.prev.style.opacity=commit?"1":".55";
+  setTimeout(()=>{
+   backClean(g);
+   if(commit){const a=$("app");a.classList.add("noanim");backNav();setTimeout(()=>a.classList.remove("noanim"),60)}
+  },dur+12);
+ }
+
+ document.addEventListener("touchstart",e=>{
+  g=null;
+  if(e.touches.length!==1||isField(e.target))return;
+  const t=e.touches[0],open=drawer.classList.contains("open");
+  const base={x:t.clientX,y:t.clientY,mode:0,vt:VT(),W:drawer.offsetWidth||280};
+  base.vt.push(t.clientX,e.timeStamp);
+  if(open){g=Object.assign(base,{kind:"close"});return}
+  if(anyOverlayOpen())return;
+  if(curView==="rooms")g=Object.assign(base,{kind:"open"});
+  else if(viewStack.length>1&&t.clientX<=EDGE)g=Object.assign(base,{kind:"back",W:innerWidth});
+ },{passive:true});
+
+ document.addEventListener("touchmove",e=>{
+  if(!g)return;
+  const t=e.touches[0],dx=t.clientX-g.x,dy=t.clientY-g.y;
+  if(g.mode===0){
+   if(Math.abs(dx)<10&&Math.abs(dy)<10)return;
+   const horiz=Math.abs(dx)>Math.abs(dy)*1.3;
+   if(!horiz||(g.kind==="close"&&dx>0)||(g.kind!=="close"&&dx<0)){g=null;return}
+   g.mode=1;g.base=t.clientX;
+   if(g.kind==="back")backPrep(g);
+   else{
+    drawer.style.transition="none";dov.style.transition="none";
+    if(g.kind==="open"){
+     drawer.style.transform="translateX(-100%)";dov.style.opacity="0";
+     openDrawer(); /* fills fields + adds .open/.on; inline styles keep it under our control */
+    }
+   }
+  }
+  if(g.mode!==1)return;
+  g.vt.push(t.clientX,e.timeStamp);
+  if(g.kind==="back")backPos(g,t.clientX);else drawerPos(g,t.clientX);
+ },{passive:true});
+
+ function endH(e){
+  if(!g)return;const k=g;g=null;
+  if(k.mode!==1)return;
+  const ev=e&&e.type==="touchend"?e:null;
+  if(k.kind==="back")finishBack(k,ev);else finishDrawer(k,ev);
+ }
+ document.addEventListener("touchend",endH,{passive:true});
+ document.addEventListener("touchcancel",endH,{passive:true});
+
+ /* ------------------------------------------------------------------ pull to refresh (chat list) */
+ (function(){
+  const list=$("rooms"),host=$("v-rooms");
+  const ind=document.createElement("div");ind.id="ptr";ind.innerHTML=RBI.svg("refresh");host.appendChild(ind);
+  const TH=64;let st=null,busy=false;
+  function setPull(d){
+   list.style.transform="translateY("+d+"px)";
+   const p=clamp(d/TH,0,1);
+   ind.style.opacity=String(p);ind.style.transform="translateY("+(d-44+8)+"px) rotate("+(p*220)+"deg)";
+  }
+  function reset(anim){
+   if(anim){list.style.transition="transform .28s "+EASE;ind.style.transition="transform .28s "+EASE+",opacity .2s"}
+   list.style.transform="";ind.style.opacity="0";ind.style.transform="translateY(-44px)";
+   setTimeout(()=>{list.style.transition=ind.style.transition="";ind.classList.remove("spinning")},300);
+  }
+  list.addEventListener("touchstart",e=>{
+   if(busy||e.touches.length!==1||list.scrollTop>0||drawer.classList.contains("open")){st=null;return}
+   st={x:e.touches[0].clientX,y:e.touches[0].clientY,mode:0,d:0};
+  },{passive:true});
+  list.addEventListener("touchmove",e=>{
+   if(!st)return;
+   const t=e.touches[0],dx=t.clientX-st.x,dy=t.clientY-st.y;
+   if(st.mode===0){
+    if(Math.abs(dx)<8&&Math.abs(dy)<8)return;
+    if(dy>0&&Math.abs(dy)>Math.abs(dx)&&list.scrollTop<=0){st.mode=1;st.y=t.clientY;list.style.transition="none";ind.style.transition="none"}
+    else{st=null;return}
+   }
+   if(e.cancelable)e.preventDefault();
+   st.d=Math.max(0,(t.clientY-st.y))*.5;if(st.d>TH*1.5)st.d=TH*1.5+(st.d-TH*1.5)*.3;
+   setPull(st.d);
+  },{passive:false});
+  async function endP(){
+   if(!st)return;const s=st;st=null;if(s.mode!==1)return;
+   if(s.d>=TH){
+    busy=true;list.style.transition="transform .22s "+EASE;list.style.transform="translateY(46px)";
+    ind.style.transition="transform .22s "+EASE;ind.style.transform="translateY(6px) rotate(0deg)";ind.style.opacity="1";ind.classList.add("spinning");
+    try{await loadRooms()}catch(e){}
+    busy=false;reset(true);
+   }else reset(true);
+  }
+  list.addEventListener("touchend",endP,{passive:true});
+  list.addEventListener("touchcancel",endP,{passive:true});
+ })();
+})();
