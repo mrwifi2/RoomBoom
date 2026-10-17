@@ -121,3 +121,105 @@ header h2{font-size:16px}
 
 /* chat opens instantly: no per-bubble entrance when a whole screen is painted at once */
 #msgs.noanim .m{animation:none}
+
+/* =====================================================================================
+   Edge-to-edge, border-free look: header + bottom bar float over the content with a soft
+   fade (content scrolls underneath), status bar / nav bar share the exact app background.
+   ===================================================================================== */
+body{background:var(--bg)}
+#rain{display:none!important}
+
+/* header: no box, no line, fades into the content */
+header{position:absolute;top:0;left:0;right:0;z-index:20;border:none;background:linear-gradient(to bottom,var(--bg) 0%,var(--bg) 52%,rgba(10,10,11,0) 100%);
+ padding:8px 10px 26px;min-height:0;pointer-events:none}
+header>*{pointer-events:auto}
+.icon-btn{border:none;background:transparent}
+.icon-btn:active{background:rgba(255,255,255,.07)}
+#refresh{display:none!important}
+#notifBtn{margin-left:auto}
+
+/* scroll areas start below the floating header and end above the floating bottom bar */
+#v-rooms .list,#v-admin .list{padding-top:70px;padding-bottom:92px}
+#v-ops{padding-top:62px}
+#v-ops .list{padding-top:6px;padding-bottom:92px}
+#msgs{padding-top:72px;padding-bottom:18px}
+
+/* bottom nav: no border, fades up into the list */
+#bnav{border-top:none;background:linear-gradient(to top,var(--bg) 0%,var(--bg) 58%,rgba(10,10,11,0) 100%);
+ height:calc(84px + env(safe-area-inset-bottom));padding-top:26px;pointer-events:none}
+#bnav button{pointer-events:auto;background:transparent}
+
+/* chat bar: borderless, pill input, messages fade out above it */
+.bar{border-top:none;background:var(--bg);position:relative;padding:6px 8px calc(8px + env(safe-area-inset-bottom))}
+#chatBar:before,#recBar:before{content:"";position:absolute;left:0;right:0;bottom:100%;height:26px;background:linear-gradient(to top,var(--bg),rgba(10,10,11,0));pointer-events:none}
+#txt{background:var(--panel2);border:none;padding:11px 16px}
+#txt:focus{outline:none;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
+#ctx{border-top:none;background:var(--bg)}
+#tobot{bottom:16px}
+#typing{background:var(--bg)}
+.bar#grpBar{background:var(--bg)}
+
+/* connection banner: small floating pill under the header */
+#net{position:absolute;left:0;right:0;top:56px;z-index:19;padding:0;pointer-events:none;background:none}
+#net.bad,#net.ok{display:flex;justify-content:center}
+#net.bad,#net.ok{background:none}
+#net.bad span,#net.ok span{display:none}
+#net.bad:after,#net.ok:after{content:none}
+#net .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;font-size:11px;background:var(--panel2);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+#net.bad .pill{color:var(--o)}
+#net.ok .pill{color:var(--g)}
+#net span{display:inline!important}
+
+/* panels / drawer / sheets: no hard lines either */
+.panelHead,.panelTabs{border-bottom:none}
+.sidePanel,#sheet,.sheetGhost{border-top:none;box-shadow:0 -10px 40px rgba(0,0,0,.45)}
+#drawer{border-right:none;box-shadow:10px 0 40px rgba(0,0,0,.45)}
+
+/* ---------- RoomBoom wordmark (centered on home) ---------- */
+#app[data-v="rooms"] #titleWrap{position:absolute;left:50%;top:28px;transform:translate(-50%,-50%);flex:none;overflow:visible}
+#app[data-v="rooms"] #titleWrap h2{overflow:visible}
+#title.wm{display:inline-flex;align-items:flex-start;font-family:Roboto,"Segoe UI","Helvetica Neue",system-ui,sans-serif;font-size:26px;line-height:1;
+ letter-spacing:-1px;transform:skewX(-10deg);white-space:nowrap}
+#title.wm .a{font-weight:300;color:var(--tx)}
+#title.wm .b{font-weight:800;background:linear-gradient(100deg,var(--g),var(--c));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;padding-right:2px}
+#title.wm .s{width:7px;height:7px;border-radius:50%;background:var(--r);margin:2px 0 0 1px;box-shadow:0 0 9px var(--r);animation:spark 2.6s ease-in-out infinite}
+@keyframes spark{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:.75}}
+#ptr{top:64px;z-index:25}
+
+/* ---------- no re-flash: rows / cards never replay an entrance animation on refresh ---------- */
+.item.row,.annCard{animation:none!important}
+
+/* ---------- seamless background (no radial tint, so fades match exactly) ---------- */
+body{background:var(--bg)!important}
+#bnav{background:linear-gradient(to top,var(--bg) 0%,var(--bg) 58%,rgba(10,10,11,0) 100%)!important;border:none!important;box-shadow:none!important}
+
+/* ---------- connection banner stays in the background: user never sees it ---------- */
+#net{display:none!important}
+
+/* ---------- splash: RB wordmark pops, accent dot flicks (Fampay-style, RoomBoom colours) ---------- */
+#iconShape{display:none}
+#sMark{position:relative;display:flex;align-items:flex-start;font-family:Roboto,"Segoe UI","Helvetica Neue",system-ui,sans-serif;
+ animation:markIn .42s cubic-bezier(.2,.9,.3,1.25) both}
+#sMark b{font-size:72px;line-height:1;font-weight:800;letter-spacing:-3px;color:var(--g);text-shadow:0 0 28px rgba(0,255,156,.28)}
+#sDot{width:13px;height:13px;border-radius:50%;background:var(--r);margin:6px 0 0 3px;box-shadow:0 0 16px var(--r);transform-origin:center;
+ animation:dotFlick .5s .18s cubic-bezier(.3,1.8,.5,1) both}
+@keyframes markIn{0%{opacity:0;transform:scale(.7)}60%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+@keyframes dotFlick{0%{transform:translate(-14px,22px) scale(0)}60%{transform:translate(2px,-10px) scale(1.25)}100%{transform:none}}
+
+/* ---------- header wordmark: just "RB", same font as before ---------- */
+#title.wm{transform:none;font-family:Roboto,"Segoe UI","Helvetica Neue",system-ui,sans-serif;letter-spacing:-1.5px}
+#title.wm .b{font-size:30px;font-weight:800;background:none;-webkit-text-fill-color:currentColor;color:var(--g);padding:0;text-shadow:0 0 18px rgba(0,255,156,.22)}
+#title.wm .s{margin:3px 0 0 2px}
+
+/* ---------- chat list: WhatsApp-sized rows ---------- */
+#rooms .item.row{padding:11px 16px;gap:14px;min-height:76px;flex:none}
+#rooms .item.row .av{width:56px!important;height:56px!important;border-radius:50%;padding:11px;flex:none}
+#rooms .item.row .mid{display:flex;flex-direction:column;gap:5px}
+#rooms .item.row b{font-size:17px;font-weight:600}
+#rooms .item.row .tm{font-size:12px}
+#rooms .item.row .pv{font-size:14px}
+#rooms .item.row .bdg{font-size:12px;padding:1px 8px;min-width:22px;text-align:center}
+#v-rooms .list{padding-left:0;padding-right:0}
+
+/* closed panels must not bleed their shadow onto the screen edges */
+.sidePanel:not(.on),#drawer:not(.open){box-shadow:none!important}
