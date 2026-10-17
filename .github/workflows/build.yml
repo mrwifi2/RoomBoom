@@ -20,8 +20,8 @@ jobs:
           set -x
           mkdir -p www
           cp roomboom-ui.html www/index.html
-          cp nav.css www/nav.css
-          cp nav.js www/nav.js
+          cp nav.css ui.css nav.js icons.js offline.js gestures.js www/
+          cp node_modules/@supabase/supabase-js/dist/umd/supabase.js www/supabase.js || echo "local supabase copy skipped (CDN fallback will be used)"
           npx cap add android
           unzip -o icons.zip -d android/app/src/main/res
           sed -i '/<uses-permission android:name="android.permission.INTERNET" \/>/a\    <uses-permission android:name="android.permission.RECORD_AUDIO" />' android/app/src/main/AndroidManifest.xml
@@ -51,4 +51,3 @@ jobs:
         with:
           name: roomboom-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-#new
