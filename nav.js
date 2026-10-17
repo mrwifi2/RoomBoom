@@ -40,11 +40,11 @@ new MutationObserver(syncBnavActive).observe($("v-rooms"),{attributes:true,attri
 function openAddSheet(){
  const s=$("sheet");s.innerHTML="";s.style.display="flex";
  const close=()=>s.style.display="none";
- const add=(t,f)=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>{close();f()};s.appendChild(b)};
- add("💬 NEW DIRECT MESSAGE",async()=>{await openOps();$("modeDm").click()});
- add("👥 NEW GROUP",async()=>{await openOps();$("modeGrp").click()});
- if(me&&me.role==="admin")add("🛡 NEW OPERATIVE",()=>{go("admin");setTitle("> COMMAND");loadUsers()});
- add("✕ CANCEL",()=>{});
+ const add=(ic,t,f)=>{s.appendChild(RBI.btn(ic,t,()=>{close();f()}))};
+ add("chat","NEW DIRECT MESSAGE",async()=>{await openOps();$("modeDm").click()});
+ add("users","NEW GROUP",async()=>{await openOps();$("modeGrp").click()});
+ if(me&&me.role==="admin")add("userplus","NEW OPERATIVE",()=>{go("admin");setTitle("> COMMAND");loadUsers()});
+ add("x","CANCEL",()=>{});
 }
 $("navAdd").onclick=openAddSheet;
 $("navHome").onclick=()=>{
@@ -72,16 +72,16 @@ function annFileUrl(path){return sb.storage.from("announcements").getPublicUrl(p
 function renderAnnCard(a){
  const d=document.createElement("div");d.className="annCard";
  const at=document.createElement("span");at.className="at";at.textContent=annTime(a.created_at);
- const ttl=document.createElement("span");ttl.className="ttl";ttl.textContent="📣 "+(a.title||"announcement");
+ const ttl=document.createElement("span");ttl.className="ttl";ttl.innerHTML=RBI.svg("megaphone")+"<span></span>";ttl.lastChild.textContent=a.title||"announcement";
  const bd=document.createElement("div");bd.className="bd";bd.textContent=a.body||"";
  d.appendChild(at);d.appendChild(ttl);d.appendChild(bd);
  if(a.link){
-  const link=document.createElement("a");link.href="#";link.textContent="🔗 "+a.link;
+  const link=document.createElement("a");link.href="#";link.innerHTML=RBI.svg("link")+"<span></span>";link.lastChild.textContent=a.link;
   link.onclick=e=>{e.preventDefault();openExternal(a.link)};
   d.appendChild(link);
  }
  if(a.file_path){
-  const fl=document.createElement("a");fl.className="fileLink";fl.href="#";fl.textContent="⬇ "+(a.file_name||"download file");
+  const fl=document.createElement("a");fl.className="fileLink";fl.href="#";fl.innerHTML=RBI.svg("download")+"<span></span>";fl.lastChild.textContent=a.file_name||"download file";
   fl.onclick=e=>{e.preventDefault();openExternal(annFileUrl(a.file_path))};
   d.appendChild(fl);
  }
@@ -89,10 +89,13 @@ function renderAnnCard(a){
 }
 async function loadAnnouncements(){
  const body=$("notifBody");
- body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
+ const cached=RBC.get("ann");
+ if(cached&&cached.length){annList=cached;body.innerHTML="";annList.forEach(a=>body.appendChild(renderAnnCard(a)))}
+ else body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
  const {data,error}=await sb.from("announcements").select("*").order("created_at",{ascending:false}).limit(50);
+ if(error&&cached&&cached.length)return;
  if(error){body.innerHTML='<div class="panelEmpty">&gt; failed to load announcements<br><small style="opacity:.7">'+error.message+'</small></div>';return}
- annList=data||[];
+ annList=data||[];RBC.set("ann",annList);
  if(!annList.length)body.innerHTML='<div class="panelEmpty">&gt; no announcements yet<br><small style="opacity:.7">admin announcements will appear here</small></div>';
  else{body.innerHTML="";annList.forEach(a=>body.appendChild(renderAnnCard(a)))}
  try{if(annList.length)localStorage.setItem("rb_ann_seen",annList[0].created_at)}catch(e){}
@@ -100,7 +103,7 @@ async function loadAnnouncements(){
 }
 function subscribeAnnouncements(){
  sb.channel("ann").on("postgres_changes",{event:"INSERT",schema:"public",table:"announcements"},p=>{
-  toast("📣 new announcement: "+(p.new.title||""));
+  toast("new announcement: "+(p.new.title||""));
   $("notifDot").style.display="";
   if($("notifPanel").classList.contains("on")&&$("tabAnn").classList.contains("active")){
    annList.unshift(p.new);$("notifBody").prepend(renderAnnCard(p.new));
@@ -110,11 +113,11 @@ function subscribeAnnouncements(){
 
 /* ---------- personal notifications (new message / group add / admin action)
    wired to Supabase "notifications" table — phase 2b ---------- */
-function notifIcon(t){return t==="message"?"💬":t==="group_add"?"👥":"🛡"}
+function notifIcon(t){return t==="message"?"chat":t==="group_add"?"users":"shield"}
 function renderNotifCard(n){
  const d=document.createElement("div");d.className="annCard notifCard"+(n.read_at?"":" unread");
  const at=document.createElement("span");at.className="at";at.textContent=annTime(n.created_at);
- const ttl=document.createElement("span");ttl.className="ttl";ttl.textContent=notifIcon(n.type)+" "+(n.title||"");
+ const ttl=document.createElement("span");ttl.className="ttl";ttl.innerHTML=RBI.svg(notifIcon(n.type))+"<span></span>";ttl.lastChild.textContent=n.title||"";
  d.appendChild(at);d.appendChild(ttl);
  if(n.body){const bd=document.createElement("div");bd.className="bd";bd.textContent=n.body;d.appendChild(bd)}
  if((n.type==="message"||n.type==="group_add")&&n.room_id){
@@ -125,8 +128,11 @@ function renderNotifCard(n){
 }
 async function loadNotifications(){
  const body=$("notifBody");
- body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
+ const cached=RBC.get("notifs");
+ if(cached&&cached.length){notifList=cached;body.innerHTML="";notifList.forEach(n=>body.appendChild(renderNotifCard(n)))}
+ else body.innerHTML='<div class="panelEmpty">&gt; loading...</div>';
  const {data,error}=await sb.from("notifications").select("*").eq("user_id",me.id).order("created_at",{ascending:false}).limit(50);
+ if(error&&cached&&cached.length)return;
  if(error){body.innerHTML='<div class="panelEmpty">&gt; failed to load notifications<br><small style="opacity:.7">'+error.message+'</small></div>';return}
  notifList=data||[];
  if(!notifList.length)body.innerHTML='<div class="panelEmpty">&gt; no notifications yet<br><small style="opacity:.7">new messages, group adds &amp; account updates will appear here</small></div>';
@@ -136,6 +142,7 @@ async function loadNotifications(){
   try{await sb.from("notifications").update({read_at:new Date().toISOString()}).in("id",unreadIds).eq("user_id",me.id)}catch(e){}
   notifList.forEach(n=>{if(!n.read_at)n.read_at=new Date().toISOString()});
  }
+ RBC.set("notifs",notifList);
  checkBellDot();
 }
 async function openRoomById(roomId){
@@ -157,7 +164,7 @@ async function openRoomById(roomId){
 }
 function subscribeNotifications(){
  sb.channel("notif_"+me.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+me.id},p=>{
-  toast(notifIcon(p.new.type)+" "+(p.new.title||"new notification"));
+  toast(p.new.title||"new notification");
   $("notifDot").style.display="";
   if($("notifPanel").classList.contains("on")&&$("tabNotif").classList.contains("active")){
    notifList.unshift(p.new);$("notifBody").prepend(renderNotifCard(p.new));
@@ -225,7 +232,7 @@ $("announceOverlay").onclick=closeAnnouncePanel;
 $("annFileBtn").onclick=()=>$("annFileIn").click();
 $("annFileIn").onchange=e=>{
  const f=e.target.files[0];e.target.value="";if(!f)return;
- annFile=f;$("annFileName").textContent="📎 "+f.name+" ("+Math.round(f.size/1024)+" KB)";$("annFileName").style.display="";
+ annFile=f;$("annFileName").innerHTML=RBI.svg("clip")+"<span></span>";$("annFileName").lastChild.textContent=f.name+" ("+Math.round(f.size/1024)+" KB)";$("annFileName").style.display="flex";
 };
 $("annSend").onclick=()=>withBusy($("annSend"),async()=>{
  const title=$("annTitle").value.trim(),body=$("annBody").value.trim(),link=$("annLink").value.trim();
@@ -259,50 +266,6 @@ function openProfilePanel(){refreshProfilePanel();$("profileOverlay").classList.
 function closeProfilePanel(){$("profileOverlay").classList.remove("on");$("profilePanel").classList.remove("on");syncBnavActive()}
 $("profileClose").onclick=closeProfilePanel;
 $("profileOverlay").onclick=closeProfilePanel;
-$("ppLogout").onclick=()=>$("out").click();
-
-/* ---------- drag-to-dismiss (swipe gesture): drawer, sheet, side panels
-   all follow the finger and either snap closed (past threshold) or snap
-   back open — same feel as a native bottom-sheet / side-drawer. ---------- */
-function dragToDismiss(panel,{axis,getOpen,onClose,threshold=80,handle}){
- const h=handle||panel;
- let sx=0,sy=0,dx=0,dy=0,active=false,armed=false;
- h.addEventListener("touchstart",e=>{
-  if(!getOpen())return;
-  sx=e.touches[0].clientX;sy=e.touches[0].clientY;dx=0;dy=0;active=true;armed=false;
- },{passive:true});
- h.addEventListener("touchmove",e=>{
-  if(!active)return;
-  dx=e.touches[0].clientX-sx;dy=e.touches[0].clientY-sy;
-  if(!armed){
-   if(axis==="x"&&dx<-10&&Math.abs(dx)>Math.abs(dy))armed=true;
-   else if(axis==="y"&&dy>10&&Math.abs(dy)>Math.abs(dx))armed=true;
-   else return;
-  }
-  panel.style.transition="none";
-  panel.style.transform=axis==="x"?"translateX("+dx+"px)":"translateY("+dy+"px)";
- },{passive:true});
- h.addEventListener("touchend",()=>{
-  if(!active)return;active=false;
-  if(!armed)return;
-  armed=false;
-  const moved=axis==="x"?dx:dy;
-  const closing=axis==="x"?moved<-threshold:moved>threshold;
-  if(closing){
-   panel.style.transition="transform .22s ease-out";
-   panel.style.transform=axis==="x"?"translateX(-100%)":"translateY(100%)";
-   setTimeout(()=>{onClose();panel.style.transition="";panel.style.transform=""},220);
-  }else{
-   panel.style.transition="transform .25s cubic-bezier(.2,.8,.3,1)";
-   panel.style.transform=axis==="x"?"translateX(0)":"translateY(0)";
-   setTimeout(()=>{panel.style.transition="";panel.style.transform=""},260);
-  }
- });
-}
-dragToDismiss($("drawer"),{axis:"x",getOpen:()=>$("drawer").classList.contains("open"),onClose:closeDrawer,threshold:70});
-dragToDismiss($("notifPanel"),{axis:"y",getOpen:()=>$("notifPanel").classList.contains("on"),onClose:closeNotifPanel,threshold:80,handle:$("notifPanel").querySelector(".panelHead")});
-dragToDismiss($("profilePanel"),{axis:"y",getOpen:()=>$("profilePanel").classList.contains("on"),onClose:closeProfilePanel,threshold:80,handle:$("profilePanel").querySelector(".panelHead")});
-dragToDismiss($("sheet"),{axis:"y",getOpen:()=>$("sheet").style.display==="flex",onClose:()=>{$("sheet").style.display="none"},threshold:70});
-dragToDismiss($("announcePanel"),{axis:"y",getOpen:()=>$("announcePanel").classList.contains("on"),onClose:closeAnnouncePanel,threshold:80,handle:$("announcePanel").querySelector(".panelHead")});
+$("ppLogout").onclick=()=>logoutFlow($("ppLogout"));
 
 syncBnavActive();
