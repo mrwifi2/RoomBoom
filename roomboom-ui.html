@@ -138,6 +138,8 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
 </style>
 <link rel="stylesheet" href="nav.css">
 <link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="chat.css">
+<link rel="stylesheet" href="home.css">
 </head>
 <body>
 <canvas id="rain"></canvas>
@@ -218,6 +220,8 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
   </div>
   <div id="sheet"></div>
   <div id="sheetOverlay"></div>
+  <div id="msgScrim"></div>
+  <div id="msgMenu"></div>
 
   <nav id="bnav">
     <button id="navAdd" class="rip-host"><span class="ic"><span data-ico="plus"></span></span><span>ADD</span></button>
@@ -400,6 +404,7 @@ async function fetchProfiles(){const {data}=await sb.from("profiles").select("*"
 
 /* ---------- navigation ---------- */
 function show(v,first){
+ if(v!=="rooms"&&window.homeSel)homeSel.exit(true);
  curView=v;$("app").dataset.v=v;$("rain").style.display="none";
  ["rooms","ops","chat","admin"].forEach(x=>$("v-"+x).classList.toggle("on",x===v));
  $("back").style.display=v==="rooms"?"none":"";$("menu").style.display=v==="rooms"?"":"none";
@@ -418,6 +423,8 @@ function backNav(){
  if(typeof closeNotifPanel==="function"&&$("notifPanel").classList.contains("on")){closeNotifPanel();return}
  if(typeof closeProfilePanel==="function"&&$("profilePanel").classList.contains("on")){closeProfilePanel();return}
  if(typeof closeAnnouncePanel==="function"&&$("announcePanel").classList.contains("on")){closeAnnouncePanel();return}
+ if(window.closeMsgMenu&&closeMsgMenu())return;
+ if(window.homeSel&&homeSel.exit())return;
  if($("sheet").style.display==="flex"){$("sheet").style.display="none";return}
  if(room)markRead(true);
  if(viewStack.length>1){viewStack.pop();const v=viewStack[viewStack.length-1];show(v);afterNav(v)}
@@ -566,33 +573,44 @@ function pvInto(el,m){
 }
 function renderRoomRows(rows,anim){
  const l=$("rooms"),sig=JSON.stringify(rows);
- if(l.dataset.sig===sig&&l.children.length)return;
+ if(l.dataset.sig===sig&&l.children.length){window.homeSel&&homeSel.sync();return}
  l.dataset.sig=sig;
  const keep=l.scrollTop;l.innerHTML="";
  rows.forEach((x,i)=>{
-  const d=document.createElement("div");d.className="item row";
-  if(anim)d.style.animationDelay=i*.06+"s";else d.style.animation="none";
-  d.innerHTML='<div class="mid"><div class="rt"><b class="glow"></b><small class="tm"></small></div><div class="rt"><small class="pv"></small></div></div>';
+  const d=document.createElement("div");d.className="item row";d.dataset.rid=x.r.id;d.dataset.type=x.r.type;
+  d.style.animation="none";
+  d.innerHTML='<div class="mid"><div class="rt"><b class="glow"></b><small class="tm"></small></div><div class="rt"><small class="pv"></small><span class="rr"></span></div></div>';
   d.prepend(av(x.name,42));
   d.querySelector("b").textContent=(x.r.type==="dm"?"":"# ")+x.name;
   const m=x.lm;
   pvInto(d.querySelector(".pv"),m);
   d.querySelector(".tm").textContent=m?fmt(m.created_at):"";
-  if(x.u){const b=document.createElement("span");b.className="bdg";b.textContent=x.u>99?"99+":x.u;d.querySelector(".rt:last-child").appendChild(b);d.classList.add("unr")}
-  let lpT=null,supp=false;
-  d.addEventListener("touchstart",()=>{supp=false;lpT=setTimeout(()=>{supp=true;openChatMenu(x.r.id,x.name)},500)});
-  d.addEventListener("touchend",()=>clearTimeout(lpT));
-  d.addEventListener("touchmove",()=>clearTimeout(lpT));
-  d.addEventListener("contextmenu",e=>{e.preventDefault();openChatMenu(x.r.id,x.name)});
-  d.onclick=()=>{if(supp){supp=false;return}openRoom(x.r.id,x.name,x.r.type)};l.appendChild(d)});
+  const rr=d.querySelector(".rr");
+  if(x.mute)rr.insertAdjacentHTML("beforeend",'<span class="fl">'+RBI.svg("bellOff","xs")+"</span>");
+  if(x.pin)rr.insertAdjacentHTML("beforeend",'<span class="fl">'+RBI.svg("pin","xs")+"</span>");
+  if(x.u){const b=document.createElement("span");b.className="bdg";b.textContent=x.u>99?"99+":x.u;rr.appendChild(b);d.classList.add("unr")}
+  d.onclick=()=>{
+   if(Date.now()-(window.__lpAt||0)<600)return;
+   if(window.homeSel&&homeSel.active()){homeSel.toggle(x.r.id);return}
+   openRoom(x.r.id,x.name,x.r.type)};
+  l.appendChild(d)});
  if(!rows.length)l.innerHTML='<div class="item"><small>> no active links. tap ADD below to scan the network.</small></div>';
  l.scrollTop=keep;
+ window.homeSel&&homeSel.sync();
 }
+function applyLocalFlags(rows){
+ const pins=RBS.get("rb_pins"),mu=RBS.get("rb_mutes");
+ rows.forEach(x=>{x.pin=pins.has(x.r.id)?1:0;x.mute=mu.has(x.r.id)?1:0});
+ rows.sort((a,b)=>(b.pin-a.pin)||((b.lm?T(b.lm.created_at):0)-(a.lm?T(a.lm.created_at):0)));
+ return rows;
+}
+/* re-draw the chat list from the saved copy (used after pin / mute, no network needed) */
+function refreshRoomsLocal(){const c=RBC.get("rooms");if(!c)return loadRooms();applyLocalFlags(c);RBC.set("rooms",c);renderRoomRows(c,false)}
 async function loadRooms(){
  const l=$("rooms");
  if(!roomsShown){
   const cached=RBC.get("rooms");
-  if(cached){renderRoomRows(cached,false);roomsShown=true}
+  if(cached){applyLocalFlags(cached);renderRoomRows(cached,false);roomsShown=true}
   else l.innerHTML=skeletonRows();
  }
  await fetchProfiles();
@@ -608,7 +626,7 @@ async function loadRooms(){
   if(m.sender_id!==me.id&&mine&&T(m.created_at)>T(mine.last_read_at)&&m.body!==DEL)unread[m.room_id]=(unread[m.room_id]||0)+1});
  const rows=Object.values(by).map(arr=>{const r=arr[0].rooms,o=arr.find(m=>m.user_id!==me.id);
   return{r,name:r.type==="dm"?(profiles[o?.user_id]?.callsign||"?"):(r.name||"room"),lm:last[r.id],u:unread[r.id]||0}});
- rows.sort((a,b)=>(b.lm?T(b.lm.created_at):0)-(a.lm?T(a.lm.created_at):0));
+ applyLocalFlags(rows);
  RBC.set("rooms",rows);
  renderRoomRows(rows,anim);
 }
@@ -619,23 +637,36 @@ async function openOps(){
  await fetchProfiles();
  opsList=Object.values(profiles).filter(p=>p.id!==me.id&&!p.is_banned);
  opsMode="dm";selMembers.clear();$("modeDm").classList.add("active");$("modeGrp").classList.remove("active");$("grpBar").style.display="none";
- renderOps();
+ renderOps(true);
 }
-function renderOps(){
- const l=$("ops");clearLoaders(l);l.innerHTML="";
+function paintOp(d){
+ const p=d._p,sel=selMembers.has(p.id),on=d._on;
+ d.classList.toggle("sel",sel&&opsMode==="group");
+ d.querySelector(".st").textContent=opsMode==="group"?"":(on?"ONLINE":"OFFLINE");
+ d.querySelector(".st").className="st"+(opsMode!=="group"&&on?" on":"");
+ $("ops").classList.toggle("grp",opsMode==="group");
+ const n=selMembers.size;$("grpGo").dataset.n=n?String(n):"";
+}
+function renderOps(first){
+ const l=$("ops");
+ if(!first&&l.dataset.built==="1"){l.querySelectorAll(".op").forEach(paintOp);return}
+ clearLoaders(l);l.innerHTML="";l.dataset.built="1";
  const h=document.createElement("div");h.className="glow";h.style.cssText="margin:4px 0 14px";l.appendChild(h);
  scrambleIn(h,"> SCANNING NETWORK... "+opsList.length+" OPERATIVE"+(opsList.length===1?"":"S")+" DETECTED",500);
  opsList.forEach((p,i)=>{
-  const on=Date.now()-new Date(p.last_seen)<120000,sel=selMembers.has(p.id);
-  const d=document.createElement("div");d.className="op"+(sel?" sel":"");d.style.animationDelay=(.7+i*.13)+"s";
-  d.innerHTML='<span class="dot'+(on?" on":"")+'"></span><div style="flex:1"><b class="glow"></b><br><small class="u" style="color:var(--dim)"></small></div><small class="st'+(on?" on":"")+'"></small>';
+  const on=Date.now()-new Date(p.last_seen)<120000;
+  const d=document.createElement("div");d.className="op";d.style.animationDelay=(.7+i*.13)+"s";d.dataset.uid=p.id;d._p=p;d._on=on;
+  d.innerHTML='<span class="dot'+(on?" on":"")+'"></span><div style="flex:1"><b class="glow"></b><br><small class="u" style="color:var(--dim)"></small></div><small class="st"></small><span class="ck">'+RBI.svg("check")+'</span>';
   d.querySelector("b").textContent=p.callsign||p.username;
   d.querySelector(".u").textContent="@"+p.username+(p.role==="admin"?" [ADMIN]":"");
-  d.querySelector(".st").textContent=opsMode==="group"?(sel?"SELECTED":""):(on?"ONLINE":"OFFLINE");
   d.prepend(av(p.callsign||p.username,38));
   d.onclick=async()=>{
-   if(opsMode==="group"){if(selMembers.has(p.id))selMembers.delete(p.id);else selMembers.add(p.id);renderOps();return}
-   const {data,error}=await sb.rpc("create_dm",{other:p.id});if(!error)openRoom(data,p.callsign||p.username,"dm")};
+   if(Date.now()-(window.__lpAt||0)<600)return;
+   if(opsMode==="group"){if(selMembers.has(p.id))selMembers.delete(p.id);else selMembers.add(p.id);paintOp(d);return}
+   if(d._busy)return;d._busy=true;
+   try{const {data,error}=await sb.rpc("create_dm",{other:p.id});if(!error)openRoom(data,p.callsign||p.username,"dm");else toast(error.message,"err")}
+   finally{setTimeout(()=>d._busy=false,800)}};
+  paintOp(d);
   l.appendChild(d)});
 }
 $("modeDm").onclick=()=>{opsMode="dm";$("modeDm").classList.add("active");$("modeGrp").classList.remove("active");$("grpBar").style.display="none";renderOps()};
@@ -645,7 +676,7 @@ $("grpGo").onclick=()=>withBusy($("grpGo"),async()=>{
  if(!selMembers.size){toast("kam se kam ek operative chuno","err");return}
  const {data,error}=await sb.rpc("create_room",{rtype:"group",rname:name,members:[...selMembers]});
  if(error){toast(error.message,"err");return}
- $("grpName").value="";selMembers.clear();openRoom(data,name,"group");
+ $("grpName").value="";selMembers.clear();$("ops").dataset.built="";openRoom(data,name,"group");
 });
 
 /* ---------- chat ---------- */
@@ -752,6 +783,7 @@ function draw(m){
  const q=d.querySelector(".q");
  if(!pending&&m.reply_to){const r=msgs.get(m.reply_to);q.innerHTML=RBI.svg("reply","xs")+"<span></span>";q.lastChild.textContent=(r?(profiles[r.sender_id]?.callsign||"?")+": "+(r.body===DEL?"[purged]":r.body):"...")}
  else q.remove();
+ if(q.isConnected)q.onclick=ev=>{ev.stopPropagation();window.jumpToMsg&&jumpToMsg(m.reply_to)};
  const xEl=d.querySelector(".x");
  if(gone){xEl.innerHTML=RBI.svg("ban","sm")+"<span>message purged</span>"}
  else if(pending){
@@ -771,7 +803,6 @@ function draw(m){
   if(m.body){const c=document.createElement("div");c.className="cap";c.textContent=m.body;xEl.appendChild(c)}
  } else xEl.textContent=m.body;
  const tEl=d.querySelector(".t");tEl.textContent=pending?"":(new Date(m.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+(m.edited_at&&!gone?" · edited":""));if(!pending&&m.expires_at)tEl.insertAdjacentHTML("beforeend",RBI.svg("bomb","xs"));
- d.onclick=()=>{if(!gone&&!pending)openSheet(m.id)};
  if(!pending){paintRx(m.id);paintTick(m,d)}
  if(isNew){
   if(m.sender_id!==me.id)$("typing").classList.remove("on");
@@ -813,10 +844,15 @@ function openSheet(id){
  add("x","CANCEL",()=>{});
 }
 function updBars(){
- const c=$("ctx"),id=replyTo||editing;if(!id){c.style.display="none";return}
- const m=msgs.get(id);c.style.display="flex";c.innerHTML="<span></span><button>"+RBI.svg("x")+"</button>";
- c.firstChild.innerHTML=RBI.svg(editing?"edit":"reply")+"<span></span>";c.firstChild.lastChild.textContent=editing?"editing: "+m.body:"replying to "+(profiles[m.sender_id]?.callsign||"?")+": "+m.body;
- c.lastChild.onclick=()=>{if(editing)$("txt").value="";replyTo=editing=null;updBars()};
+ const c=$("ctx"),id=replyTo||editing,m=id&&msgs.get(id);
+ if(!m){replyTo=editing=null;c.style.display="none";c.innerHTML="";return}
+ const who=editing?"Editing message":"Replying to "+(m.sender_id===me.id?"yourself":(profiles[m.sender_id]?.callsign||"?"));
+ const snip=m.body===DEL?"[purged]":m.media_type==="image"?"Photo":m.media_type==="voice"?"Voice note":(m.body||"");
+ c.style.display="flex";
+ c.innerHTML='<div class="cx"><b class="cw"></b><em class="cs"></em></div><button type="button" class="cclose" aria-label="Cancel"></button>';
+ c.querySelector(".cw").textContent=who;c.querySelector(".cs").textContent=snip;
+ const x=c.querySelector(".cclose");x.innerHTML=RBI.svg("x");
+ x.onclick=()=>{if(editing)$("txt").value="";replyTo=editing=null;updBars()};
 }
 $("boomBtn").onclick=async()=>{
  const v=await modal({title:"> boom timer (seconds, 0 = off)",placeholder:"seconds",value:boomSecs||10});
@@ -1017,5 +1053,7 @@ start();
 </script>
 <script src="nav.js" defer></script>
 <script src="gestures.js" defer></script>
+<script src="chat.js" defer></script>
+<script src="home.js" defer></script>
 </body>
 </html>
