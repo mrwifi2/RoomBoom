@@ -48,3 +48,14 @@
 #ctx .cs{font-style:normal;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 #ctx .cclose{width:30px;height:30px;padding:0;border-radius:50%;border:none;background:var(--panel2);color:var(--dim);display:flex;align-items:center;justify-content:center;flex:none}
 #ctx .cclose .i{width:15px;height:15px}
+
+/* ---- smoothness: cheap fade overlay instead of a scroll-container mask (masks re-composite every scroll frame) ---- */
+#msgs{-webkit-mask-image:none!important;mask-image:none!important;contain:layout style}
+#wrap:after{content:"";position:absolute;left:0;right:0;bottom:0;height:30px;z-index:4;pointer-events:none;background:linear-gradient(to top,var(--bg),rgba(10,10,11,0))}
+.m{contain:layout style}
+/* typing indicator floats over the bottom padding, so showing it never pushes the messages */
+#typing{display:block!important;height:18px;margin-top:-18px;position:relative;z-index:6;opacity:0;transition:opacity .18s;pointer-events:none;padding-top:0;padding-bottom:0;background:none!important}
+#typing.on{opacity:1}
+/* reply / edit preview slides in instead of popping */
+#ctx{animation:ctxIn .2s cubic-bezier(.22,.8,.3,1)}
+@keyframes ctxIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}

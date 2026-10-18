@@ -140,6 +140,7 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="chat.css">
 <link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="panels.css">
 </head>
 <body>
 <canvas id="rain"></canvas>
@@ -224,7 +225,6 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
   <div id="msgMenu"></div>
 
   <nav id="bnav">
-    <button id="navAdd" class="rip-host"><span class="ic"><span data-ico="plus"></span></span><span>ADD</span></button>
     <button id="navHome" class="rip-host active"><span class="ic"><span data-ico="home"></span></span><span>HOME</span></button>
     <button id="navProfile" class="rip-host"><span class="ic"><span data-ico="user"></span></span><span>PROFILE</span></button>
   </nav>
@@ -405,6 +405,7 @@ async function fetchProfiles(){const {data}=await sb.from("profiles").select("*"
 /* ---------- navigation ---------- */
 function show(v,first){
  if(v!=="rooms"&&window.homeSel)homeSel.exit(true);
+ if(v!=="rooms"&&window.fabMenu)fabMenu.close();
  curView=v;$("app").dataset.v=v;$("rain").style.display="none";
  ["rooms","ops","chat","admin"].forEach(x=>$("v-"+x).classList.toggle("on",x===v));
  $("back").style.display=v==="rooms"?"none":"";$("menu").style.display=v==="rooms"?"":"none";
@@ -419,11 +420,13 @@ let viewStack=["rooms"];
 function afterNav(v){if(v==="rooms")mrp.then(loadRooms);if(v==="ops")setTitle("> OPERATIVES");if(v==="admin")setTitle("> COMMAND")}
 function go(v){if(viewStack[viewStack.length-1]!==v)viewStack.push(v);show(v);afterNav(v)}
 function backNav(){
+ if(window.subPage&&subPage.close())return;
  if($("drawer").classList.contains("open")){closeDrawer();return}
  if(typeof closeNotifPanel==="function"&&$("notifPanel").classList.contains("on")){closeNotifPanel();return}
  if(typeof closeProfilePanel==="function"&&$("profilePanel").classList.contains("on")){closeProfilePanel();return}
  if(typeof closeAnnouncePanel==="function"&&$("announcePanel").classList.contains("on")){closeAnnouncePanel();return}
  if(window.closeMsgMenu&&closeMsgMenu())return;
+ if(window.fabMenu&&fabMenu.close())return;
  if(window.homeSel&&homeSel.exit())return;
  if($("sheet").style.display==="flex"){$("sheet").style.display="none";return}
  if(room)markRead(true);
@@ -572,6 +575,7 @@ function pvInto(el,m){
  else add(null,you+(m.body||""));
 }
 function renderRoomRows(rows,anim){
+ rows=rows.filter(x=>!x.arch);
  const l=$("rooms"),sig=JSON.stringify(rows);
  if(l.dataset.sig===sig&&l.children.length){window.homeSel&&homeSel.sync();return}
  l.dataset.sig=sig;
@@ -599,8 +603,8 @@ function renderRoomRows(rows,anim){
  window.homeSel&&homeSel.sync();
 }
 function applyLocalFlags(rows){
- const pins=RBS.get("rb_pins"),mu=RBS.get("rb_mutes");
- rows.forEach(x=>{x.pin=pins.has(x.r.id)?1:0;x.mute=mu.has(x.r.id)?1:0});
+ const pins=RBS.get("rb_pins"),mu=RBS.get("rb_mutes"),ar=RBS.get("rb_arch");
+ rows.forEach(x=>{x.pin=pins.has(x.r.id)?1:0;x.mute=mu.has(x.r.id)?1:0;x.arch=ar.has(x.r.id)?1:0});
  rows.sort((a,b)=>(b.pin-a.pin)||((b.lm?T(b.lm.created_at):0)-(a.lm?T(a.lm.created_at):0)));
  return rows;
 }
@@ -654,11 +658,12 @@ function renderOps(first){
  const h=document.createElement("div");h.className="glow";h.style.cssText="margin:4px 0 14px";l.appendChild(h);
  scrambleIn(h,"> SCANNING NETWORK... "+opsList.length+" OPERATIVE"+(opsList.length===1?"":"S")+" DETECTED",500);
  opsList.forEach((p,i)=>{
-  const on=Date.now()-new Date(p.last_seen)<120000;
+  const on=!p.hide_last_seen&&Date.now()-new Date(p.last_seen)<120000;
   const d=document.createElement("div");d.className="op";d.style.animationDelay=(.7+i*.13)+"s";d.dataset.uid=p.id;d._p=p;d._on=on;
   d.innerHTML='<span class="dot'+(on?" on":"")+'"></span><div style="flex:1"><b class="glow"></b><br><small class="u" style="color:var(--dim)"></small></div><small class="st"></small><span class="ck">'+RBI.svg("check")+'</span>';
   d.querySelector("b").textContent=p.callsign||p.username;
   d.querySelector(".u").textContent="@"+p.username+(p.role==="admin"?" [ADMIN]":"");
+  if(p.bio){const bi=document.createElement("small");bi.className="bio";bi.textContent=p.bio;d.querySelector(".u").after(document.createElement("br"),bi)}
   d.prepend(av(p.callsign||p.username,38));
   d.onclick=async()=>{
    if(Date.now()-(window.__lpAt||0)<600)return;
@@ -684,7 +689,7 @@ async function openRoom(id,name,type){
  room=id;roomType=type||"dm";otherId=null;msgs.clear();rx={};replyTo=editing=null;updBars();
  lastDay="";newCount=0;otherRead=null;$("tobot").style.display="none";$("typing").classList.remove("on");
  go("chat");setTitle((roomType==="group"?"# ":"")+name);$("substatus").textContent="";
- $("titleWrap").style.cursor=roomType==="group"?"pointer":"";
+ $("titleWrap").style.cursor="pointer";
 
  /* show saved messages instantly (works offline), then refresh from the server */
  (RBC.get("msgs_"+id)||[]).forEach(m=>msgs.set(m.id,m));queuedFor(id).forEach(m=>msgs.set(m.id,m));
@@ -735,6 +740,7 @@ function setOther(mm){(mm||[]).filter(x=>x.user_id!==me.id).forEach(x=>{otherRea
 function updSub(){
  if(!otherId)return;const p=profiles[otherId];if(!p)return;
  const on=Date.now()-new Date(p.last_seen)<120000,e=$("substatus");
+ if(p.hide_last_seen){e.textContent="";e.classList.remove("on");return}
  e.textContent=on?"online":"last seen "+fmt(p.last_seen);e.classList.toggle("on",on);
 }
 function typingIn(uid){const e=$("typing");e.textContent="> "+(profiles[uid]?.callsign||"someone")+" is typing";e.classList.add("on");
@@ -1012,7 +1018,7 @@ $("txt").oninput=()=>{if(chan&&Date.now()-lastTypeSent>2500){lastTypeSent=Date.n
 $("msgs").onscroll=()=>{const b=$("msgs"),far=b.scrollHeight-b.scrollTop-b.clientHeight;
  if(far<120){newCount=0;$("tobot").style.display="none"}else if(far>400)showTobot()};
 $("tobot").onclick=()=>$("msgs").scrollTo({top:1e9,behavior:"smooth"});
-$("titleWrap").onclick=()=>{if(roomType==="group")openGroupSheet()};
+$("titleWrap").onclick=()=>{if(roomType==="group")openGroupSheet();else if(otherId&&window.openUserCard)openUserCard(otherId)};
 
 /* ---------- admin ---------- */
 async function adminCall(body){const {data,error}=await sb.functions.invoke("admin-users",{body});
@@ -1055,5 +1061,6 @@ start();
 <script src="gestures.js" defer></script>
 <script src="chat.js" defer></script>
 <script src="home.js" defer></script>
+<script src="panels.js" defer></script>
 </body>
 </html>
