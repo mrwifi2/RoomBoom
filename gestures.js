@@ -34,7 +34,7 @@
  const anyModal=()=>$("modalWrap").classList.contains("on");
  function anyOverlayOpen(){
   return $("drawer").classList.contains("open")||$("notifPanel").classList.contains("on")||$("profilePanel").classList.contains("on")||
-   $("announcePanel").classList.contains("on")||$("sheet").style.display==="flex"||anyModal();
+   $("announcePanel").classList.contains("on")||$("sheet").style.display==="flex"||$("msgMenu").classList.contains("on")||(window.homeSel&&homeSel.active())||anyModal();
  }
 
  /* ------------------------------------------------------------------ bottom sheets */
@@ -93,6 +93,7 @@
   el.addEventListener("touchend",e=>end(e),{passive:true});
   el.addEventListener("touchcancel",()=>end(null),{passive:true});
  }
+ window.RBsheetDrag=sheetDrag;
  sheetDrag({el:$("notifPanel"),scrim:$("notifOverlay"),isOpen:()=>$("notifPanel").classList.contains("on"),close:closeNotifPanel});
  sheetDrag({el:$("profilePanel"),scrim:$("profileOverlay"),isOpen:()=>$("profilePanel").classList.contains("on"),close:closeProfilePanel});
  sheetDrag({el:$("announcePanel"),scrim:$("announceOverlay"),isOpen:()=>$("announcePanel").classList.contains("on"),close:closeAnnouncePanel});
@@ -116,7 +117,7 @@
 
  /* ------------------------------------------------------------------ sidebar + back-swipe */
  const drawer=$("drawer"),dov=$("drawerOverlay");
- const EDGE=64;
+ const EDGE=64,CHAT_EDGE=22; /* in a chat the left strip is kept small so swipe-to-reply on incoming bubbles works */
  let g=null; /* current horizontal gesture */
 
  function drawerPos(g,x){
@@ -174,7 +175,7 @@
   if(open){g=Object.assign(base,{kind:"close"});return}
   if(anyOverlayOpen())return;
   if(curView==="rooms")g=Object.assign(base,{kind:"open"});
-  else if(viewStack.length>1&&t.clientX<=EDGE)g=Object.assign(base,{kind:"back",W:innerWidth});
+  else if(viewStack.length>1&&t.clientX<=(curView==="chat"?CHAT_EDGE:EDGE))g=Object.assign(base,{kind:"back",W:innerWidth});
  },{passive:true});
 
  document.addEventListener("touchmove",e=>{

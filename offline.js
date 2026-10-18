@@ -12,12 +12,20 @@ const RBC=(function(){
  }
  function del(k){try{localStorage.removeItem(K+k)}catch(e){}}
  function clearAll(){
-  try{Object.keys(localStorage).filter(x=>x.startsWith(K)||x==="rb_outbox"||x==="rb_ann_seen").forEach(x=>localStorage.removeItem(x))}catch(e){}
+  try{Object.keys(localStorage).filter(x=>x.startsWith(K)||x==="rb_outbox"||x==="rb_ann_seen"||x==="rb_pins"||x==="rb_mutes").forEach(x=>localStorage.removeItem(x))}catch(e){}
  }
  function outbox(){try{return JSON.parse(localStorage.getItem("rb_outbox"))||[]}catch(e){return []}}
  function saveOutbox(a){try{localStorage.setItem("rb_outbox",JSON.stringify(a))}catch(e){}}
  return {get,set,del,clearAll,outbox,saveOutbox};
 })();
+
+/* RBS: small local flags per chat (pinned / muted) */
+const RBS={
+ get(k){try{return new Set(JSON.parse(localStorage.getItem(k))||[])}catch(e){return new Set()}},
+ save(k,s){try{localStorage.setItem(k,JSON.stringify([...s]))}catch(e){}},
+ has(k,id){return RBS.get(k).has(id)}
+};
+window.__lpAt=0; /* time of the last long-press, so the tap that follows it is ignored */
 
 /* is this error just "no internet"? */
 function isNetErr(err){

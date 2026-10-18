@@ -1,0 +1,55 @@
+/* ===== RoomBoom home: multi-select action bar (top), chat rows, operative picker ===== */
+#rooms .item.row,#ops .op{position:relative}
+.item.row.pressing{background:rgba(255,255,255,.06)}
+.item.row .rr{display:inline-flex;align-items:center;gap:8px;flex:none;margin-left:8px}
+.item.row .fl{display:inline-flex;color:var(--dim)}
+.item.row .fl .i{width:14px;height:14px}
+
+/* selected row: tinted + check badge on the avatar (Google Files style) */
+.item.row .selck{position:absolute;left:52px;top:47px;width:22px;height:22px;border-radius:50%;border:2px solid var(--dim);background:var(--bg);color:transparent;
+ display:none;align-items:center;justify-content:center;transition:background .15s,border-color .15s,transform .2s cubic-bezier(.3,1.6,.5,1)}
+.item.row .selck .i{width:13px;height:13px;stroke-width:3}
+.selmode .item.row .selck{display:flex}
+.item.row.sel{background:rgba(0,255,156,.1)}
+.item.row.sel .selck{background:var(--g);border-color:var(--g);color:#06120c;transform:scale(1.08)}
+.item.row.sel .av{transform:scale(.92)}
+.item.row .av{transition:transform .18s ease}
+
+/* top action bar */
+#selBar{position:absolute;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;gap:2px;padding:8px 10px;min-height:56px;box-sizing:border-box;
+ background:var(--panel);box-shadow:0 8px 26px rgba(0,0,0,.5);transform:translateY(-115%);transition:transform .26s cubic-bezier(.22,.8,.3,1);pointer-events:none}
+.selmode #selBar{transform:none;pointer-events:auto}
+#selBar b{font-size:17px;font-weight:600;margin-left:6px;color:var(--tx)}
+#selBar .sp{flex:1}
+#selBar .icon-btn.on{color:var(--g)}
+.selmode #bnav{opacity:0;transform:translateY(16px);transition:opacity .2s,transform .2s}
+.selmode #bnav button{pointer-events:none}
+#bnav{transition:opacity .2s,transform .2s}
+
+/* top dropdown menu */
+#selMenuScrim{position:fixed;inset:0;z-index:31;display:none}
+#selMenuScrim.on{display:block}
+#selMenu{position:absolute;top:52px;right:8px;z-index:32;min-width:220px;background:var(--panel2);border-radius:14px;padding:6px;box-shadow:0 14px 40px rgba(0,0,0,.6);
+ transform-origin:top right;transform:scale(.88) translateY(-8px);opacity:0;pointer-events:none;transition:transform .2s cubic-bezier(.22,.9,.3,1.1),opacity .15s}
+#selMenu.on{transform:none;opacity:1;pointer-events:auto}
+#selMenu button{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;background:transparent;border-radius:9px;padding:12px 12px;font-size:14px;color:var(--tx)}
+#selMenu button:active{background:rgba(255,255,255,.08)}
+#selMenu button .i{width:19px;height:19px;color:var(--dim)}
+#selMenu button.danger,#selMenu button.danger .i{color:var(--r)}
+
+/* operatives: tick circle in group mode, no re-render flicker */
+.op .ck{display:none;width:24px;height:24px;border-radius:50%;border:2px solid var(--dim);color:transparent;align-items:center;justify-content:center;flex:none;
+ transition:background .15s,border-color .15s}
+.op .ck .i{width:14px;height:14px;stroke-width:3}
+#ops.grp .op .ck{display:flex}
+.op.sel .ck{background:var(--g);border-color:var(--g);color:#06120c}
+.op{transition:border-color .15s,background .15s}
+.op.pressing{background:var(--panel2)}
+#grpGo[data-n]:not([data-n=""]):after{content:" (" attr(data-n) ")"}
+
+/* operatives screen: the CREATE bar owns the bottom, bottom nav steps aside */
+#app[data-v="ops"] #bnav{display:none!important}
+#v-ops .list{padding-bottom:20px!important}
+#grpBar{background:var(--bg);padding:8px 12px calc(10px + env(safe-area-inset-bottom));gap:8px}
+#grpBar input{flex:1;border:none;background:var(--panel2);border-radius:20px;padding:11px 16px}
+#grpBar button{border-radius:20px;padding:0 18px}

@@ -1,0 +1,155 @@
+/* ===== RoomBoom chat interactions (loaded with defer, after gestures.js) =====
+   - keyboard: chat shifts up with the keyboard (bottom anchored), like Instagram
+   - long-press a message  -> menu (react / reply / copy / edit / delete)
+   - swipe a message       -> reply  (incoming: left->right, own: right->left)
+   - drag the chat left    -> timestamps slide in from the right
+   Uses globals of the main script: $, msgs, me, DEL, react, updBars, toast, sb, draw ... */
+(function(){
+ const box=$("msgs"),wrap=$("wrap"),app=$("app");
+ const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+ const buzz=n=>{try{navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
+
+ /* ---------------- keyboard: keep the bottom of the chat glued to the input ---------------- */
+ let ph=wrap.clientHeight,gap=0;
+ const gapNow=()=>Math.max(0,box.scrollHeight-box.scrollTop-box.clientHeight);
+ box.addEventListener("scroll",()=>{gap=gapNow()},{passive:true});
+ new MutationObserver(()=>{gap=gapNow()}).observe(box,{childList:true});
+ new ResizeObserver(()=>{
+  const h=wrap.clientHeight;
+  if(h>0&&ph>0&&h!==ph){ /* keep the same distance from the bottom, so the last message stays above the keyboard */
+   box.scrollTop=box.scrollHeight-box.clientHeight-gap;
+  }
+  if(h>0)ph=h;
+ }).observe(wrap);
+ /* some WebViews don't resize the page for the keyboard: shrink the app to the visible area ourselves */
+ const vv=window.visualViewport;
+ if(vv){
+  const fit=()=>{
+   const kb=window.innerHeight-vv.height-vv.offsetTop;
+   if(kb>120&&app.getBoundingClientRect().height>vv.height+60)app.style.height=vv.height+"px";
+   else if(kb<=60)app.style.height="";
+  };
+  vv.addEventListener("resize",fit);vv.addEventListener("scroll",()=>{if(vv.offsetTop)window.scrollTo(0,0)});
+ }
+
+ /* ---------------- jump to a quoted message ---------------- */
+ window.jumpToMsg=function(id){
+  const el=$("m-"+id);if(!el){toast("original message is not loaded");return}
+  el.scrollIntoView({block:"center",behavior:"smooth"});
+  el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");
+ };
+
+ /* ---------------- long-press menu ---------------- */
+ const menu=$("msgMenu"),scrim=$("msgScrim");
+ const isOpen=()=>menu.classList.contains("on");
+ window.closeMsgMenu=function(){
+  if(!isOpen())return false;
+  menu.classList.remove("on");scrim.classList.remove("on");return true;
+ };
+ let openedAt=0;
+ scrim.onclick=()=>{if(Date.now()-openedAt<450)return;closeMsgMenu()};
+ if(window.RBsheetDrag)RBsheetDrag({el:menu,scrim,isOpen,close:()=>{menu.classList.remove("on");scrim.classList.remove("on")}});
+
+ function openMenu(m){
+  menu.innerHTML="";menu.style.transform=menu.style.transition="";
+  const row=document.createElement("div");row.className="rxrow";
+  ["👍","🔥","😂","💀","❤️"].forEach(e=>{const b=document.createElement("button");b.textContent=e;b.onclick=()=>{if(Date.now()-openedAt<450)return;closeMsgMenu();react(m.id,e)};row.appendChild(b)});
+  menu.appendChild(row);
+  const add=(ic,t,f,danger)=>{
+   const b=document.createElement("button");b.className="act"+(danger?" danger":"");b.innerHTML=RBI.label(ic,t);
+   b.onclick=()=>{if(Date.now()-openedAt<450)return;closeMsgMenu();f()};menu.appendChild(b);
+  };
+  const mine=m.sender_id===me.id,textOnly=!m.media_path&&!m.media_type;
+  add("reply","REPLY",()=>{replyTo=m.id;editing=null;updBars();$("txt").focus()});
+  if(m.body&&m.body!==DEL)add("clip","COPY TEXT",()=>{
+   const done=()=>toast("copied");
+   try{navigator.clipboard.writeText(m.body).then(done,done)}catch(e){done()}
+  });
+  if(mine&&textOnly)add("edit","EDIT",()=>{editing=m.id;replyTo=null;$("txt").value=m.body;updBars();$("txt").focus()});
+  if(mine)add("trash","DELETE",async()=>{
+   const u={body:DEL,edited_at:new Date().toISOString()};
+   const {error}=await sb.from("messages").update(u).eq("id",m.id);
+   if(!error){Object.assign(m,u);draw(m)}else toast(error.message,"err");
+  },true);
+  openedAt=Date.now();
+  requestAnimationFrame(()=>{menu.classList.add("on");scrim.classList.add("on")});
+ }
+
+ /* ---------------- touch: long-press, swipe-to-reply, drag-for-timestamps ---------------- */
+ const TH=56,MAX=86,TS_MAX=76;
+ let st=null,lpT=null,pressT=null;
+ const eligible=m=>m&&!m._pending&&m.body!==DEL;
+ function cancelPress(){clearTimeout(lpT);clearTimeout(pressT);if(st&&st.el)st.el.classList.remove("pressing")}
+ const rubber=r=>r<=TH?r:Math.min(MAX,TH+(r-TH)*.3);
+
+ box.addEventListener("touchstart",e=>{
+  cancelPress();st=null;
+  if(e.touches.length!==1)return;
+  const t=e.touches[0];
+  if(t.clientX<22)return; /* leave the very edge to the back-swipe */
+  const el=e.target.closest&&e.target.closest(".m");
+  const m=el?msgs.get(el.id.slice(2)):null;
+  st={x:t.clientX,y:t.clientY,el,m:eligible(m)?m:null,mode:0,kind:null,shown:0,hit:false,ico:null};
+  if(st.m){
+   const s=st;
+   pressT=setTimeout(()=>{if(st===s&&s.mode===0)el.classList.add("pressing")},120);
+   lpT=setTimeout(()=>{if(st===s&&s.mode===0){s.mode=-2;el.classList.remove("pressing");buzz(14);openMenu(s.m)}},420);
+  }
+ },{passive:true});
+
+ box.addEventListener("touchmove",e=>{
+  if(!st||st.mode<0||!e.touches[0])return;
+  const t=e.touches[0],dx=t.clientX-st.x,dy=t.clientY-st.y;
+  if(st.mode===0){
+   if(Math.abs(dx)<9&&Math.abs(dy)<9)return;
+   cancelPress();
+   if(Math.abs(dy)>Math.abs(dx)*.9){st.mode=-1;return}
+   const own=st.m&&st.m.sender_id===me.id;
+   if(st.m&&((own&&dx<0)||(!own&&dx>0)))st.kind="reply";
+   else if(dx<0)st.kind="ts";
+   else{st.mode=-1;return}
+   st.own=own;st.mode=1;box.classList.add("dragging");
+   if(st.kind==="ts"){ /* line every time up in one column at the right edge */
+    const W=box.clientWidth;
+    box.querySelectorAll(".m:not(.me)").forEach(el=>{const t=el.querySelector(".t");if(t)t.style.left=(W-12+14-el.offsetLeft-el.offsetWidth)+"px"});
+   }
+   if(st.kind==="reply"){
+    const i=document.createElement("span");i.className="swIco";i.innerHTML=RBI.svg("reply");st.el.appendChild(i);st.ico=i;
+   }
+  }
+  const raw=Math.abs(dx);
+  if(st.kind==="reply"){
+   const sh=rubber(raw),dir=st.own?-1:1;st.shown=sh;
+   st.el.style.transform="translateX("+dir*sh+"px)";
+   const p=clamp((sh-12)/(TH-12),0,1);
+   st.ico.style.opacity=String(p);
+   st.ico.style.transform="translateX("+(-dir*sh)+"px) scale("+(.5+.5*p)+")";
+   const hit=sh>=TH;
+   if(hit!==st.hit){st.hit=hit;st.ico.classList.toggle("hit",hit);if(hit)buzz(10)}
+  }else{
+   const sh=Math.min(TS_MAX,raw<=TS_MAX*.8?raw:TS_MAX*.8+(raw-TS_MAX*.8)*.25);
+   box.style.setProperty("--dx",sh+"px");box.style.setProperty("--p",String(clamp(sh/46,0,1)));
+  }
+ },{passive:true});
+
+ function endTouch(){
+  cancelPress();
+  const s=st;st=null;
+  if(!s||s.mode!==1)return;
+  box.classList.remove("dragging");
+  if(s.kind==="reply"){
+   const el=s.el,ico=s.ico,fire=s.hit&&s.m;
+   el.style.transition="transform .34s cubic-bezier(.2,.9,.3,1.12)";el.style.transform="translateX(0)";
+   if(ico){ico.style.transition="opacity .25s,transform .34s";ico.style.opacity="0";ico.style.transform="translateX(0) scale(.5)"}
+   setTimeout(()=>{el.style.transition=el.style.transform="";if(ico)ico.remove()},360);
+   if(fire){replyTo=s.m.id;editing=null;updBars();$("txt").focus()}
+  }else{
+   box.style.setProperty("--dx","0px");box.style.setProperty("--p","0");
+   setTimeout(()=>{if(!box.classList.contains("dragging"))box.querySelectorAll(".m .t").forEach(t=>t.style.left="")},380);
+  }
+ }
+ box.addEventListener("touchend",endTouch,{passive:true});
+ box.addEventListener("touchcancel",endTouch,{passive:true});
+ box.addEventListener("scroll",()=>{if(st&&st.mode===0){cancelPress();st.mode=-1}},{passive:true});
+ box.addEventListener("contextmenu",e=>e.preventDefault());
+})();
