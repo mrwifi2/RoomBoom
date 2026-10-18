@@ -171,8 +171,8 @@ async function openRoomById(roomId){
 }
 function subscribeNotifications(){
  sb.channel("notif_"+me.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+me.id},p=>{
-  toast(p.new.title||"new notification");
-  $("notifDot").style.display="";
+  if(!(p.new.room_id&&RBS.has("rb_mutes",p.new.room_id))){toast(p.new.title||"new notification");
+  $("notifDot").style.display=""}
   if($("notifPanel").classList.contains("on")&&$("tabNotif").classList.contains("active")){
    notifList.unshift(p.new);$("notifBody").prepend(renderNotifCard(p.new));$("notifBody").dataset.sig="n:"+notifList.map(x=>x.id).join(",");
    sb.from("notifications").update({read_at:new Date().toISOString()}).eq("id",p.new.id).then(()=>{});
