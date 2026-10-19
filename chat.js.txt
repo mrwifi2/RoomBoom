@@ -166,3 +166,23 @@
  box.addEventListener("scroll",()=>{if(st&&st.mode===0){cancelPress();st.mode=-1}},{passive:true});
  box.addEventListener("contextmenu",e=>e.preventDefault());
 })();
+
+/* ---------------- keep the keyboard open after sending ---------------- */
+(function(){
+ const btn=$("send"),txt=$("txt");if(!btn||!txt)return;
+ txt.setAttribute("enterkeyhint","send");
+ const keep=()=>{if(document.activeElement!==txt)txt.focus({preventScroll:true})};
+ btn.addEventListener("mousedown",e=>e.preventDefault()); /* tapping the button must not steal focus from the text box */
+ let sx=0,sy=0,ok=false;
+ btn.addEventListener("touchstart",e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;ok=true},{passive:true});
+ btn.addEventListener("touchend",e=>{
+  if(!ok)return;ok=false;
+  const t=e.changedTouches[0];if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12)return;
+  const had=document.activeElement===txt;
+  if(e.cancelable)e.preventDefault(); /* no synthetic click / focus change */
+  send();if(had)keep();
+ },{passive:false});
+ const orig=btn.onclick;
+ btn.onclick=function(e){const had=document.activeElement===txt;const r=orig&&orig.call(this,e);if(had)keep();return r};
+ txt.addEventListener("keydown",e=>{if(e.key==="Enter")setTimeout(keep,0)});
+})();
