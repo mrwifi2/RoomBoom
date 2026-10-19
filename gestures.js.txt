@@ -128,7 +128,7 @@
  }
  function finishDrawer(g,ev){
   const v=ev?g.vt.v():0;
-  const target=v>.45?true:v<-.45?false:g.p>.5;
+  const target=!ev?(g.kind==="close"):(v>.45?true:v<-.45?false:g.p>.5);
   const W=g.W,dur=clamp(Math.abs((target?1-g.p:g.p)*W)/Math.max(Math.abs(v),.8),140,320);
   drawer.style.transition="transform "+dur+"ms "+EASE;dov.style.transition="opacity "+dur+"ms linear";
   drawer.style.transform=target?"translateX(0)":"translateX(-100%)";dov.style.opacity=target?"1":"0";
@@ -155,7 +155,7 @@
   g.cur.classList.remove("backing");g.cur.style.cssText="";g.prev.style.cssText="";
  }
  function finishBack(g,ev){
-  const W=g.W,v=ev?g.vt.v():0,commit=g.dx>W*.38||(v>.5&&g.dx>16);
+  const W=g.W,v=ev?g.vt.v():0,commit=ev&&(g.dx>W*.38||(v>.5&&g.dx>16)); /* cancelled by the phone's own back gesture -> just snap back, never navigate twice */
   const dur=clamp((commit?W-g.dx:g.dx)/Math.max(Math.abs(v),.9),150,300);
   g.cur.style.transition="transform "+dur+"ms "+EASE;g.prev.style.transition="transform "+dur+"ms "+EASE+",opacity "+dur+"ms linear";
   g.cur.style.transform=commit?"translateX(100%)":"translateX(0)";
@@ -173,9 +173,10 @@
   const base={x:t.clientX,y:t.clientY,mode:0,vt:VT(),W:drawer.offsetWidth||280};
   base.vt.push(t.clientX,e.timeStamp);
   if(open){g=Object.assign(base,{kind:"close"});return}
+  if(t.clientX<26||t.clientX>innerWidth-26)return; /* the phone's own back-swipe zone - leave it alone */
   if(anyOverlayOpen())return;
   if(curView==="rooms")g=Object.assign(base,{kind:"open"});
-  else if(viewStack.length>1&&t.clientX<=(curView==="chat"?CHAT_EDGE:EDGE))g=Object.assign(base,{kind:"back",W:innerWidth});
+  if(curView!=="rooms"&&viewStack.length>1&&curView!=="chat"&&t.clientX<=EDGE&&t.clientX>=26)g=Object.assign(base,{kind:"back",W:innerWidth});
  },{passive:true});
 
  document.addEventListener("touchmove",e=>{

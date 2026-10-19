@@ -28,16 +28,20 @@
  $("spBack").innerHTML=RBI.svg("back");
  const card=mk("div",null,"");card.id="userCard";const cscrim=mk("div",null,"");cscrim.id="userScrim";
  document.body.appendChild(cscrim);document.body.appendChild(card);
+ let fromDrawer=false;
  function closeCard(){if(!card.classList.contains("on"))return false;card.classList.remove("on");cscrim.classList.remove("on");return true}
  cscrim.onclick=closeCard;
  function closePage(){
   if(closeCard())return true;
   if(!page.classList.contains("on"))return false;
-  page.classList.remove("on");return true;
+  page.classList.remove("on");
+  if(fromDrawer){fromDrawer=false;setTimeout(()=>{if(typeof openDrawer==="function"&&!page.classList.contains("on"))openDrawer()},60)} /* back goes to the menu, not the home screen */
+  return true;
  }
  $("spBack").onclick=closePage;
  let curFill=null,curTitle="";
  function openPage(title,fill){
+  fromDrawer=$("drawer").classList.contains("open")||fromDrawer;
   curFill=fill;curTitle=title;$("spTitle").textContent=title;
   const b=$("spBody");b.innerHTML="";b.scrollTop=0;fill(b);
   page.classList.add("on");
@@ -48,7 +52,7 @@
  /* swipe from the left edge to go back */
  (function(){
   let st=null;
-  page.addEventListener("touchstart",e=>{const t=e.touches[0];st=t.clientX<26?{x:t.clientX,y:t.clientY,mode:0,dx:0}:null},{passive:true});
+  page.addEventListener("touchstart",e=>{const t=e.touches[0];st=(t.clientX<26||t.clientX>innerWidth-26)?null:t.clientX<56?{x:t.clientX,y:t.clientY,mode:0,dx:0}:null},{passive:true});
   page.addEventListener("touchmove",e=>{
    if(!st)return;const t=e.touches[0],dx=t.clientX-st.x,dy=t.clientY-st.y;
    if(st.mode===0){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;if(dx>0&&Math.abs(dx)>Math.abs(dy)){st.mode=1;page.classList.add("drag")}else{st=null;return}}
@@ -60,7 +64,7 @@
    if(s.dx>innerWidth*.33){page.style.transform="";closePage()}
    else{page.style.transition="transform .25s cubic-bezier(.22,.8,.3,1)";page.style.transform="";setTimeout(()=>page.style.transition="",260)}
   };
-  page.addEventListener("touchend",end,{passive:true});page.addEventListener("touchcancel",end,{passive:true});
+  page.addEventListener("touchend",end,{passive:true});page.addEventListener("touchcancel",()=>{if(st)st.dx=0;end()},{passive:true});
  })();
 
  /* ============================================================ starred messages (stored on this device) */

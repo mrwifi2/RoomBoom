@@ -12,9 +12,10 @@ const RBC=(function(){
  }
  function del(k){try{localStorage.removeItem(K+k)}catch(e){}}
  function clearAll(){
+  try{indexedDB.deleteDatabase("rb_media")}catch(e){}
   try{Object.keys(localStorage).filter(x=>x.startsWith(K)||x==="rb_outbox"||x==="rb_ann_seen"||x==="rb_pins"||x==="rb_mutes"||x==="rb_arch"||x==="rb_stars"||x==="rb_stats").forEach(x=>localStorage.removeItem(x))}catch(e){}
  }
- function outbox(){try{return JSON.parse(localStorage.getItem("rb_outbox"))||[]}catch(e){return []}}
+ function outbox(){try{return(JSON.parse(localStorage.getItem("rb_outbox"))||[]).map(i=>{if(!i.id)i.id=i.tempId||("q-"+Math.random().toString(36).slice(2));return i})}catch(e){return []}}
  function saveOutbox(a){try{localStorage.setItem("rb_outbox",JSON.stringify(a))}catch(e){}}
  return {get,set,del,clearAll,outbox,saveOutbox};
 })();
@@ -44,36 +45,91 @@ function persistMsgs(){
  },400);
 }
 
-/* ---------- outbox: queue text sent while offline ---------- */
+/* ---------- outbox: every message (text, photo, voice) shows instantly and is sent in the background ---------- */
+/* big files can't live in localStorage, so photo/voice blobs wait in IndexedDB (with an in-memory fallback) */
+const RBM=(()=>{
+ const mem=new Map();let dbp=null;
+ const open=()=>dbp||(dbp=new Promise((res,rej)=>{try{const r=indexedDB.open("rb_media",1);r.onupgradeneeded=()=>r.result.createObjectStore("b");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}}));
+ const tx=async(mode,fn)=>{const d=await open();return new Promise((res,rej)=>{const t=d.transaction("b",mode),rq=fn(t.objectStore("b"));t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error)})};
+ return{
+  put:async(k,v)=>{mem.set(k,v);try{await tx("readwrite",s=>s.put(v,k))}catch(e){}},
+  get:async k=>{if(mem.has(k))return mem.get(k);try{return await tx("readonly",s=>s.get(k))}catch(e){return null}},
+  del:async k=>{mem.delete(k);try{await tx("readwrite",s=>s.delete(k))}catch(e){}}
+ };
+})();
+const localURL=new Map(); /* temp preview of photos we are sending */
+
 function queuedBubble(it){
- return {id:it.tempId,room_id:it.row.room_id,sender_id:it.row.sender_id,body:it.row.body,created_at:it.at||new Date().toISOString(),
-  reply_to:it.row.reply_to||null,_pending:true,_queued:true};
+ const r=it.row;
+ return {id:it.id,room_id:r.room_id,sender_id:r.sender_id,body:r.body||null,media_type:r.media_type||null,_local:localURL.get(it.id)||null,
+  created_at:it.at||new Date().toISOString(),reply_to:r.reply_to||null,_pending:true,_queued:!navigator.onLine||!!it.wait};
 }
-function queueText(row){
- const it={tempId:"q-"+crypto.randomUUID(),row,at:new Date().toISOString()};
+function queueItem(it){
  const q=RBC.outbox();q.push(it);RBC.saveOutbox(q);
+}
+function queueText(row){ /* shows the bubble right now, then sends */
+ row.id=row.id||crypto.randomUUID();
+ const it={id:row.id,row,at:new Date().toISOString()};
+ queueItem(it);
  const b=queuedBubble(it);msgs.set(b.id,b);draw(b);
+ flushOutbox();
 }
 function queuedFor(roomId){return RBC.outbox().filter(i=>i.row.room_id===roomId).map(queuedBubble)}
+function setPendState(id,wait){
+ const q=RBC.outbox(),it=q.find(x=>x.id===id);if(it&&!!it.wait!==wait){it.wait=wait;RBC.saveOutbox(q)}
+ const b=msgs.get(id);if(b&&b._pending){b._queued=wait||!navigator.onLine;draw(b)}
+}
+function repaintPending(){msgs.forEach(b=>{if(b._pending){const q=!navigator.onLine||!!(RBC.outbox().find(x=>x.id===b.id)||{}).wait;if(b._queued!==q){b._queued=q;draw(b)}}})}
 
-let _flushing=false;
+async function sendItem(it){
+ const row=Object.assign({},it.row);
+ if(it.media){
+  const blob=await RBM.get(it.id);
+  if(!blob)return{error:{message:"file is missing"}};
+  const {error:upErr}=await sb.storage.from("media").upload(row.media_path,blob,{contentType:it.ctype||blob.type||"application/octet-stream"});
+  if(upErr&&!/already exists|duplicate/i.test(upErr.message||""))return{error:upErr};
+ }
+ const {data,error}=await sb.from("messages").insert(row).select().single();
+ if(error){
+  if(row.id&&(error.code==="23505"||/duplicate key/i.test(error.message||""))){ /* a retry after a lost reply: it is already there */
+   const r=await sb.from("messages").select("*").eq("id",row.id).single();if(r.data)return{data:r.data};
+  }
+  return{error};
+ }
+ return{data};
+}
+
+let _flushing=false,_again=false;
 async function flushOutbox(){
- if(_flushing||!navigator.onLine||typeof me==="undefined"||!me)return;
+ if(typeof me==="undefined"||!me)return;
+ if(_flushing){_again=true;return}
+ if(!navigator.onLine){repaintPending();return}
  _flushing=true;
  try{
-  let q=RBC.outbox();
-  while(q.length){
-   const it=q[0];
-   const {data,error}=await sb.from("messages").insert(it.row).select().single();
-   if(error){
-    if(isNetErr(error))break;
-    toast("queued message failed: "+error.message,"err");
-   }else{
-    if(msgs.has(it.tempId)){msgs.delete(it.tempId);const el=$("m-"+it.tempId);if(el)el.remove()}
-    if(room===it.row.room_id){msgs.set(data.id,data);draw(data)}
+  do{
+   _again=false;
+   for(;;){
+    const q=RBC.outbox();if(!q.length)break;
+    const it=q[0];
+    setPendState(it.id,false);
+    let res;try{res=await sendItem(it)}catch(e){res={error:e}}
+    if(res.error){
+     if(isNetErr(res.error)){setPendState(it.id,true);break}
+     /* the server refused it for real: take the bubble away and say why */
+     toast(res.error,"err");
+     msgs.delete(it.id);const el=$("m-"+it.id);if(el)el.remove();
+     if(!it.media&&it.row.body&&$("txt")&&!$("txt").value)$("txt").value=it.row.body;
+    }else{
+     const data=res.data;
+     if(room===it.row.room_id){msgs.set(data.id,data);draw(data);persistMsgs()}else msgs.delete(it.id);
+    }
+    RBC.saveOutbox(RBC.outbox().filter(x=>x.id!==it.id));
+    if(it.media){RBM.del(it.id);const u=localURL.get(it.id);if(u)setTimeout(()=>{URL.revokeObjectURL(u);localURL.delete(it.id)},4000)}
    }
-   q.shift();RBC.saveOutbox(q);
-  }
+  }while(_again);
  }finally{_flushing=false}
  if(typeof curView!=="undefined"&&curView==="rooms")loadRooms();
 }
+/* keep trying while something is waiting (covers "online but the server is not reachable") */
+setInterval(()=>{if(navigator.onLine&&RBC.outbox().length)flushOutbox()},12000);
+addEventListener("offline",()=>{try{repaintPending()}catch(e){}});

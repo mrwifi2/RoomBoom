@@ -323,9 +323,40 @@ const splashDone=new Promise(res=>{
 });
 
 /* ---------- notifications ---------- */
+/* turn raw technical errors into something a normal person can read */
+function friendly(m){
+ const raw=String((m&&m.message)||m||"");const s=raw.toLowerCase();
+ try{console.warn("[rb]",raw)}catch(e){}
+ const R=[
+  [/failed to fetch|networkerror|network request|load failed|net::|err_internet|fetch failed|econnreset/,"no internet connection - check your network and try again"],
+  [/invalid login|invalid credentials|wrong password|invalid_grant/,"wrong username or passkey"],
+  [/jwt|refresh token|not authenticated|auth session missing/,"session expired - please log in again"],
+  [/permission denied|row-level security|42501|forbidden|unauthori[sz]ed|not allowed|not authorized/,"you don't have permission to do that"],
+  [/duplicate key|already exists|unique constraint|already registered|already taken/,"that already exists"],
+  [/foreign key|violates/,"that item no longer exists"],
+  [/does not exist|schema cache|could not find|pgrst|undefined column|function .* not found/,"this feature is not set up yet - please tell the admin"],
+  [/timeout|timed out|aborterror/,"taking too long - please try again"],
+  [/too large|payload|413|exceeds|file size/,"that file is too large"],
+  [/rate limit|too many requests|429/,"too many tries - wait a moment and try again"],
+  [/notallowederror|permission dismissed|microphone|getusermedia|audio source/,"microphone is not available - allow it in phone settings"],
+  [/notfounderror|requested device not found/,"no microphone found on this device"]
+ ];
+ for(const [re,msg] of R)if(re.test(s))return msg;
+ if(/[{}\[\]]|undefined|null|typeerror|referenceerror|syntaxerror|is not a function|cannot read|\bat \w+\.|[a-z]+_[a-z_]+|\b\d{5}\b/.test(raw)||raw.length>110)return "something went wrong - please try again";
+ return raw;
+}
 function toast(msg,type){
- const t=document.createElement("div");t.className="toast"+(type==="err"?" err":"");t.innerHTML=RBI.svg(type==="err"?"alert":"check")+"<span></span>";t.lastChild.textContent=msg;
- $("toasts").appendChild(t);setTimeout(()=>t.remove(),3000);
+ if(type==="err")msg=friendly(msg);
+ const box=$("toasts"),key=(type||"")+"|"+msg;
+ const ex=[...box.children].find(t=>t._k===key);
+ if(ex){ /* same message again: just refresh it instead of stacking a copy */
+  clearTimeout(ex._t);ex._t=setTimeout(()=>ex.remove(),2600);
+  ex.classList.remove("bump");void ex.offsetWidth;ex.classList.add("bump");return;
+ }
+ while(box.children.length>=2)box.firstChild.remove(); /* never more than two on screen */
+ const t=document.createElement("div");t.className="toast"+(type==="err"?" err":"");t._k=key;
+ t.innerHTML=RBI.svg(type==="err"?"alert":"check")+"<span></span>";t.lastChild.textContent=msg;
+ box.appendChild(t);t._t=setTimeout(()=>t.remove(),2600);
 }
 function modal({title,placeholder,value="",okText="OK",onlyOk=false}){
  return new Promise(res=>{
@@ -430,7 +461,8 @@ function backNav(){
  if(window.homeSel&&homeSel.exit())return;
  if($("sheet").style.display==="flex"){$("sheet").style.display="none";return}
  if(room)markRead(true);
- if(viewStack.length>1){viewStack.pop();const v=viewStack[viewStack.length-1];show(v);afterNav(v)}
+ if(viewStack.length>1){const was=curView;viewStack.pop();const v=viewStack[viewStack.length-1];show(v);afterNav(v);
+  if(was==="admin"&&window.__fromMenu){window.__fromMenu=false;setTimeout(()=>{if(curView==="rooms"&&!$("drawer").classList.contains("open"))openDrawer()},140)}}
  else{const AP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;if(AP)AP.exitApp()}
 }
 $("back").onclick=backNav;
@@ -445,12 +477,12 @@ function openDrawer(){
 function closeDrawer(){$("drawer").classList.remove("open");$("drawerOverlay").classList.remove("on")}
 $("menu").onclick=openDrawer;
 $("drawerOverlay").onclick=closeDrawer;
-$("drawerAdmin").onclick=()=>{closeDrawer();go("admin");setTitle("> COMMAND");loadUsers()};
+$("drawerAdmin").onclick=()=>{window.__fromMenu=true;closeDrawer();go("admin");setTitle("> COMMAND");loadUsers()};
 document.querySelectorAll("[data-th]").forEach(b=>b.onclick=()=>setTheme(b.dataset.th));
 $("setSaveName").onclick=()=>withBusy($("setSaveName"),async()=>{
  const v=$("setCallsign").value.trim();if(!v){toast("callsign khaali nahi ho sakta","err");return}
  const {error}=await sb.from("profiles").update({callsign:v}).eq("id",me.id);
- if(error){toast(error.message,"err");return}
+ if(error){toast(error,"err");return}
  me.callsign=v;profiles[me.id]=me;try{localStorage.setItem("rb_me",JSON.stringify(me))}catch(e){}
  toast("callsign updated");
  if(typeof refreshProfilePanel==="function")refreshProfilePanel();
@@ -498,19 +530,19 @@ function openGroupSheet(){
  if(canManage)add("edit","RENAME GROUP",async()=>{
   const nn=await modal({title:"> new group name",placeholder:"name"});if(!nn)return;
   const {error}=await sb.rpc("rename_room",{rid:room,new_name:nn});
-  if(error)toast(error.message,"err");else{setTitle("# "+nn);toast("group renamed");loadRooms()}
+  if(error)toast(error,"err");else{setTitle("# "+nn);toast("group renamed");loadRooms()}
  });
  if(canManage)add("userplus","ADD MEMBER",openAddMember);
  if(canManage)add("users","MANAGE MEMBERS",openManageMembers);
  add("logout","LEAVE GROUP",async()=>{
   const ok=await modal({title:"> leave this group?",okText:"LEAVE"});if(!ok)return;
   const {error}=await sb.from("room_members").delete().eq("room_id",room).eq("user_id",me.id);
-  if(error)toast(error.message,"err");else{toast("left group");backNav();loadRooms()}
+  if(error)toast(error,"err");else{toast("left group");backNav();loadRooms()}
  });
  if(canManage)add("trash","DELETE GROUP",async()=>{
   const ok=await modal({title:"> delete this group for everyone? cannot be undone",okText:"DELETE"});if(!ok)return;
   const {error}=await sb.rpc("delete_room",{rid:room});
-  if(error)toast(error.message,"err");else{toast("group deleted");backNav();loadRooms()}
+  if(error)toast(error,"err");else{toast("group deleted");backNav();loadRooms()}
  });
  add("x","CANCEL",()=>{});
 }
@@ -525,7 +557,7 @@ async function openAddMember(){
  cands.forEach(p=>{
   const b=document.createElement("button");b.innerHTML=RBI.svg("user")+'<span class="lb"></span>';b.lastChild.textContent=p.callsign||p.username;
   b.onclick=async()=>{close();const {error}=await sb.rpc("add_room_member",{rid:room,uid:p.id});
-   if(error)toast(error.message,"err");else toast((p.callsign||p.username)+" added to group")};
+   if(error)toast(error,"err");else toast((p.callsign||p.username)+" added to group")};
   s.appendChild(b);
  });
  s.appendChild(RBI.btn("x","CANCEL",close));
@@ -542,7 +574,7 @@ async function openManageMembers(){
   b.lastChild.textContent=(p.callsign||p.username)+(x.role==="owner"?" [OWNER]":"")+(x.user_id===me.id?" (you)":"")+" - tap to remove";
   if(x.role==="owner"||x.user_id===me.id)b.disabled=true,b.style.opacity=".45";
   else b.onclick=async()=>{close();const {error}=await sb.rpc("remove_room_member",{rid:room,uid:x.user_id});
-   if(error)toast(error.message,"err");else toast((p.callsign||p.username)+" removed from group")};
+   if(error)toast(error,"err");else toast((p.callsign||p.username)+" removed from group")};
   s.appendChild(b);
  });
  s.appendChild(RBI.btn("x","CLOSE",close));
@@ -555,7 +587,7 @@ function openChatMenu(id,name){
   const ok=await modal({title:"> delete chat with "+name+"? history removed for you",okText:"DELETE"});
   if(!ok)return;
   const {error}=await sb.from("room_members").delete().eq("room_id",id).eq("user_id",me.id);
-  if(error)toast(error.message,"err");else{toast("chat deleted");loadRooms()}
+  if(error)toast(error,"err");else{toast("chat deleted");loadRooms()}
  });
  add("x","CANCEL",()=>{});
 }
@@ -669,7 +701,7 @@ function renderOps(first){
    if(Date.now()-(window.__lpAt||0)<600)return;
    if(opsMode==="group"){if(selMembers.has(p.id))selMembers.delete(p.id);else selMembers.add(p.id);paintOp(d);return}
    if(d._busy)return;d._busy=true;
-   try{const {data,error}=await sb.rpc("create_dm",{other:p.id});if(!error)openRoom(data,p.callsign||p.username,"dm");else toast(error.message,"err")}
+   try{const {data,error}=await sb.rpc("create_dm",{other:p.id});if(!error)openRoom(data,p.callsign||p.username,"dm");else toast(error,"err")}
    finally{setTimeout(()=>d._busy=false,800)}};
   paintOp(d);
   l.appendChild(d)});
@@ -680,7 +712,7 @@ $("grpGo").onclick=()=>withBusy($("grpGo"),async()=>{
  const name=$("grpName").value.trim();if(!name){toast("group ka naam daalo","err");return}
  if(!selMembers.size){toast("kam se kam ek operative chuno","err");return}
  const {data,error}=await sb.rpc("create_room",{rtype:"group",rname:name,members:[...selMembers]});
- if(error){toast(error.message,"err");return}
+ if(error){toast(error,"err");return}
  $("grpName").value="";selMembers.clear();$("ops").dataset.built="";openRoom(data,name,"group");
 });
 
@@ -787,7 +819,7 @@ function draw(m){
  d.innerHTML='<div class="n"></div><div class="q"></div><div class="x"></div><div class="rx"></div><span class="t"></span> <span class="tk"></span>';
  const nm=profiles[m.sender_id]?.callsign||"???",n=d.querySelector(".n");n.textContent=nm+" >";n.prepend(av(nm,18));
  const q=d.querySelector(".q");
- if(!pending&&m.reply_to){const r=msgs.get(m.reply_to);q.innerHTML=RBI.svg("reply","xs")+"<span></span>";q.lastChild.textContent=(r?(profiles[r.sender_id]?.callsign||"?")+": "+(r.body===DEL?"[purged]":r.body):"...")}
+ if(m.reply_to){const r=msgs.get(m.reply_to);q.innerHTML=RBI.svg("reply","xs")+"<span></span>";q.lastChild.textContent=(r?(profiles[r.sender_id]?.callsign||"?")+": "+(r.body===DEL?"[purged]":r.body):"...")}
  else q.remove();
  if(q.isConnected)q.onclick=ev=>{ev.stopPropagation();window.jumpToMsg&&jumpToMsg(m.reply_to)};
  const xEl=d.querySelector(".x");
@@ -795,12 +827,18 @@ function draw(m){
  else if(pending){
   xEl.textContent="";
   if(m.media_type==="image"&&m._local){const img=document.createElement("img");img.src=m._local;xEl.appendChild(img)}
-  const up=document.createElement("div");up.className="uploading";up.innerHTML=m._queued?RBI.svg("clock","xs")+"<span>waiting for network...</span>":'<span class="spin"></span> uploading...';if(m._queued)xEl.textContent=m.body||"";xEl.appendChild(up);
+  else if(!m.media_type)xEl.textContent=m.body||"";
+  if(m.media_type||m._queued){
+   const up=document.createElement("div");up.className="uploading";
+   up.innerHTML=m._queued?RBI.svg("clock","xs")+"<span>waiting for network...</span>":'<span class="spin"></span> '+(m.media_type==="voice"?"sending voice...":"sending...");
+   xEl.appendChild(up);
+  }
  }
  else if(m.media_path){
   xEl.textContent="";
   if(m.media_type==="image"){
    const img=document.createElement("img");img.onclick=ev=>{ev.stopPropagation();mediaUrl(m.media_path).then(u=>u&&openLightbox(u))};
+   const lu=localURL.get(m.id);if(lu)img.src=lu; /* keep our own preview, no blank flash */
    xEl.appendChild(img);mediaUrl(m.media_path).then(u=>{if(u)img.src=u});
   }else{
    const au=document.createElement("audio");au.controls=true;au.onclick=ev=>ev.stopPropagation();
@@ -877,14 +915,11 @@ async function send(){
  if(!editing&&body.startsWith("/")){handleCmd(body);return}
  if(editing){const id=editing;editing=null;updBars();
   const {error}=await sb.from("messages").update({body,edited_at:new Date().toISOString()}).eq("id",id);
-  if(error)toast(error.message,"err");return}
- const row={room_id:room,sender_id:me.id,body};
+  if(error)toast(error,"err");return}
+ const row={id:crypto.randomUUID(),room_id:room,sender_id:me.id,body};
  if(replyTo)row.reply_to=replyTo;if(boomSecs)row.boom_seconds=boomSecs;
  replyTo=null;updBars();
- if(!navigator.onLine){queueText(row);return}
- const {data,error}=await sb.from("messages").insert(row).select().single();
- if(error){if(isNetErr(error))queueText(row);else toast("send failed: "+error.message,"err")}
- else{msgs.set(data.id,data);draw(data);persistMsgs()}
+ queueText(row); /* the bubble appears at once; sending happens in the background */
 }
 async function compressImage(file){
  const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(file)});
@@ -895,24 +930,22 @@ async function compressImage(file){
 }
 async function sendMedia(file,type){
  if(!room)return;
- const tempId="tmp-"+crypto.randomUUID();
- const temp={id:tempId,sender_id:me.id,created_at:new Date().toISOString(),media_type:type,_local:type==="image"?URL.createObjectURL(file):null,_pending:true};
- msgs.set(tempId,temp);draw(temp);
+ const id=crypto.randomUUID(),rid=room,at=new Date().toISOString();
+ const url=type==="image"?URL.createObjectURL(file):null;if(url)localURL.set(id,url);
+ const temp={id,room_id:rid,sender_id:me.id,created_at:at,media_type:type,_local:url,_pending:true,_queued:!navigator.onLine};
+ msgs.set(id,temp);draw(temp); /* shows immediately, before any compressing or uploading */
  try{
   const blob=type==="image"?await compressImage(file):file;
   const ext=type==="image"?"jpg":(blob.type&&blob.type.includes("mp4")?"m4a":blob.type&&blob.type.includes("aac")?"aac":"webm");
-  const path=room+"/"+crypto.randomUUID()+"."+ext;
-  const {error:upErr}=await sb.storage.from("media").upload(path,blob,{contentType:type==="image"?"image/jpeg":(blob.type||"audio/webm")});
-  if(upErr)throw upErr;
-  const row={room_id:room,sender_id:me.id,media_path:path,media_type:type};
+  const ctype=type==="image"?"image/jpeg":(blob.type||"audio/webm");
+  await RBM.put(id,blob);
+  const row={id,room_id:rid,sender_id:me.id,media_path:rid+"/"+crypto.randomUUID()+"."+ext,media_type:type};
   if(boomSecs)row.boom_seconds=boomSecs;
-  const {data,error}=await sb.from("messages").insert(row).select().single();
-  if(error)throw error;
-  msgs.delete(tempId);$("m-"+tempId)?.remove();
-  msgs.set(data.id,data);draw(data);
+  queueItem({id,row,media:true,ctype,at});
+  flushOutbox();
  }catch(err){
-  msgs.delete(tempId);$("m-"+tempId)?.remove();
-  toast((type==="image"?"photo":"voice")+" send failed: "+(err.message||err),"err");
+  msgs.delete(id);$("m-"+id)?.remove();
+  toast(err,"err");
  }
 }
 let attLong=false,attT=null;
@@ -968,11 +1001,11 @@ async function startRec(){
     const {value:has}=await VR.hasAudioRecordingPermission();
     if(!has){
      const {value:granted}=await VR.requestAudioRecordingPermission();
-     if(!granted){toast("mic permission denied — long-press the attach button to add a recording instead","err");return}
+     if(!granted){toast("microphone is off - allow it in phone settings, or hold the attach button to add a recording","err");return}
     }
     await VR.startRecording();
     micRecording=true;recMode="native";showRecBar();
-   }catch(e){toast("mic unavailable: "+(e.message||e)+" — long-press the attach button to add a recording instead","err")}
+   }catch(e){toast("could not start the microphone - try again, or hold the attach button to add a recording","err")}
    return;
   }
   try{
@@ -982,7 +1015,7 @@ async function startRec(){
    mediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data)};
    mediaRecorder.start();
    micRecording=true;recMode="web";showRecBar();
-  }catch(e){toast("mic unavailable on this device: "+e.message+" — long-press the attach button to add a recording instead","err")}
+  }catch(e){toast("could not start the microphone - try again, or hold the attach button to add a recording","err")}
  }finally{micStarting=false}
 }
 async function finishRec(send){
@@ -990,11 +1023,15 @@ async function finishRec(send){
  micRecording=false;hideRecBar();
  if(recMode==="native"){
   try{
-   const {recordDataBase64,mimeType}=await VR.stopRecording();
+   const res=await VR.stopRecording();
    if(!send)return;
-   const blob=b64ToBlob(recordDataBase64,mimeType);
-   if(blob.size>800)sendMedia(blob,"voice");else toast("recording too short","err");
-  }catch(e){if(send)toast("recording failed: "+(e.message||e),"err")}
+   /* the plugin wraps its answer: {value:{recordDataBase64,msDuration,mimeType}} */
+   const v=(res&&res.value&&typeof res.value==="object")?res.value:(res||{});
+   const held=Date.now()-recStartTs;
+   if(!v.recordDataBase64){toast(held<900?"hold the mic a little longer":"could not record - please try again","err");return}
+   const blob=b64ToBlob(v.recordDataBase64,v.mimeType);
+   if(blob.size>300)sendMedia(blob,"voice");else toast("hold the mic a little longer","err");
+  }catch(e){if(send)toast("could not record - please try again","err")}
   return;
  }
  if(recMode==="web"){
@@ -1005,7 +1042,7 @@ async function finishRec(send){
   if(micStream)micStream.getTracks().forEach(t=>t.stop());
   if(!send)return;
   const blob=new Blob(recChunks,{type:mediaRecorder.mimeType||"audio/webm"});
-  if(blob.size>800)sendMedia(blob,"voice");else toast("recording too short","err");
+  if(blob.size>300)sendMedia(blob,"voice");else toast("hold the mic a little longer","err");
  }
 }
 let micTouchHandled=false;
@@ -1026,7 +1063,7 @@ async function adminCall(body){const {data,error}=await sb.functions.invoke("adm
 async function loadUsers(){
  const l=$("ulist");l.innerHTML="";l.appendChild(loaderRow());
  const r=await adminCall({action:"list"});clearLoaders(l);l.innerHTML="";
- if(r.error){toast("admin list error: "+r.error,"err");return}
+ if(r.error){toast(r.error,"err");return}
  if(!r.users||!r.users.length){l.innerHTML='<div class="item"><small>> no operatives found</small></div>';return}
  (r.users||[]).forEach(u=>{
   const d=document.createElement("div");d.className="item";

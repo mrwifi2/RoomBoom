@@ -82,7 +82,7 @@
   if(mine)add("trash","DELETE",async()=>{
    const u={body:DEL,edited_at:new Date().toISOString()};
    const {error}=await sb.from("messages").update(u).eq("id",m.id);
-   if(!error){Object.assign(m,u);draw(m)}else toast(error.message,"err");
+   if(!error){Object.assign(m,u);draw(m)}else toast(error,"err");
   },true);
   openedAt=Date.now();
   requestAnimationFrame(()=>{menu.classList.add("on");scrim.classList.add("on")});
@@ -99,7 +99,7 @@
   cancelPress();st=null;
   if(e.touches.length!==1)return;
   const t=e.touches[0];
-  if(t.clientX<22)return; /* leave the very edge to the back-swipe */
+  if(t.clientX<28||t.clientX>innerWidth-28)return; /* both edges belong to the phone's own back-swipe */
   const el=e.target.closest&&e.target.closest(".m");
   const m=el?msgs.get(el.id.slice(2)):null;
   st={x:t.clientX,y:t.clientY,el,m:eligible(m)?m:null,mode:0,kind:null,shown:0,hit:false,ico:null};
@@ -151,7 +151,7 @@
   if(!s||s.mode!==1)return;
   box.classList.remove("dragging");
   if(s.kind==="reply"){
-   const el=s.el,ico=s.ico,fire=s.hit&&s.m;
+   const el=s.el,ico=s.ico,fire=s.hit&&s.m&&!s.cancel;
    el.style.transition="transform .34s cubic-bezier(.2,.9,.3,1.12)";el.style.transform="translateX(0)";
    if(ico){ico.style.transition="opacity .25s,transform .34s";ico.style.opacity="0";ico.style.transform="translateX(0) scale(.5)"}
    setTimeout(()=>{el.style.transition=el.style.transform="";if(ico)ico.remove()},360);
@@ -162,7 +162,7 @@
   }
  }
  box.addEventListener("touchend",endTouch,{passive:true});
- box.addEventListener("touchcancel",endTouch,{passive:true});
+ box.addEventListener("touchcancel",()=>{if(st)st.cancel=true;endTouch()},{passive:true});
  box.addEventListener("scroll",()=>{if(st&&st.mode===0){cancelPress();st.mode=-1}},{passive:true});
  box.addEventListener("contextmenu",e=>e.preventDefault());
 })();
