@@ -439,7 +439,7 @@ function show(v,first){
  if(v!=="rooms"&&window.homeSel)homeSel.exit(true);
  if(v!=="rooms"&&window.fabMenu)fabMenu.close();
  curView=v;$("app").dataset.v=v;$("rain").style.display="none";
- ["rooms","ops","chat","admin"].forEach(x=>$("v-"+x).classList.toggle("on",x===v));
+ ["rooms","ops","chat"].forEach(x=>$("v-"+x).classList.toggle("on",x===v));
  $("back").style.display=v==="rooms"?"none":"";$("menu").style.display=v==="rooms"?"":"none";
  $("notifBtn").style.display=v==="rooms"?"":"none";
  $("refresh").style.display=v==="rooms"?"":"none";
@@ -453,10 +453,10 @@ function afterNav(v){if(v==="rooms")mrp.then(loadRooms);if(v==="ops")setTitle(">
 function go(v){if(viewStack[viewStack.length-1]!==v)viewStack.push(v);show(v);afterNav(v)}
 function backNav(){
  if(window.subPage&&subPage.close())return;
- if($("drawer").classList.contains("open")){closeDrawer();return}
+ if(typeof closeAnnouncePanel==="function"&&$("announcePanel").classList.contains("on")){closeAnnouncePanel();return}
  if(typeof closeNotifPanel==="function"&&$("notifPanel").classList.contains("on")){closeNotifPanel();return}
  if(typeof closeProfilePanel==="function"&&$("profilePanel").classList.contains("on")){closeProfilePanel();return}
- if(typeof closeAnnouncePanel==="function"&&$("announcePanel").classList.contains("on")){closeAnnouncePanel();return}
+ if($("drawer").classList.contains("open")){closeDrawer();return}
  if(window.closeMsgMenu&&closeMsgMenu())return;
  if(window.fabMenu&&fabMenu.close())return;
  if(window.homeSel&&homeSel.exit())return;
@@ -479,7 +479,7 @@ function openDrawer(){
 function closeDrawer(){$("drawer").classList.remove("open");$("drawerOverlay").classList.remove("on")}
 $("menu").onclick=openDrawer;
 $("drawerOverlay").onclick=closeDrawer;
-$("drawerAdmin").onclick=()=>{window.__fromMenu=true;closeDrawer();go("admin");setTitle("> COMMAND");loadUsers()};
+$("drawerAdmin").onclick=()=>{closeDrawer();go("admin");setTitle("> COMMAND");loadUsers()}; /* replaced by panels.js (shows as a page over the menu) */
 document.querySelectorAll("[data-th]").forEach(b=>b.onclick=()=>setTheme(b.dataset.th));
 $("setSaveName").onclick=()=>withBusy($("setSaveName"),async()=>{
  const v=$("setCallsign").value.trim();if(!v){toast("callsign khaali nahi ho sakta","err");return}
@@ -756,7 +756,7 @@ async function openRoom(id,name,type){
   .on("broadcast",{event:"typing"},p=>typingIn(p.payload.uid))
   .subscribe();
 }
-function msgSig(){return [...msgs.values()].map(m=>m.id+":"+(m.edited_at||"")+":"+(m.body===DEL?"d":"")).join("|")}
+function msgSig(){return [...msgs.values()].map(m=>m.id+":"+(m.edited_at||"")+":"+(m.body===DEL?"d":"")+(m._pending?"p":"")).join("|")}
 function paintAll(){
  const box=$("msgs");box.classList.add("noanim");box.innerHTML="";lastDay="";
  loading=true;[...msgs.values()].sort((a,b)=>T(a.created_at)-T(b.created_at)).forEach(m=>draw(m));loading=false;

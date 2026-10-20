@@ -231,9 +231,8 @@ function openAnnouncePanel(){
  annFile=null;$("annFileName").style.display="none";$("annFileName").textContent="";
  $("announceOverlay").classList.add("on");$("announcePanel").classList.add("on");
 }
-function closeAnnouncePanel(){$("announceOverlay").classList.remove("on");$("announcePanel").classList.remove("on");
- if(window.__annFromMenu){window.__annFromMenu=false;setTimeout(()=>{if(!$("drawer").classList.contains("open"))openDrawer()},140)}}
-$("drawerAnnounce").onclick=()=>{window.__annFromMenu=true;closeDrawer();openAnnouncePanel()};
+function closeAnnouncePanel(){$("announceOverlay").classList.remove("on");$("announcePanel").classList.remove("on")}
+$("drawerAnnounce").onclick=()=>openAnnouncePanel(); /* the menu stays open underneath */
 $("announceClose").onclick=closeAnnouncePanel;
 $("announceOverlay").onclick=closeAnnouncePanel;
 $("annFileBtn").onclick=()=>$("annFileIn").click();

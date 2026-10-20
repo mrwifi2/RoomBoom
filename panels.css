@@ -100,3 +100,7 @@
 .bgAct{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .bgAct button{display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:transparent;color:inherit}
 .bgAct button.danger{color:var(--r,#ff2e63);border-color:rgba(255,46,99,.35)}
+
+/* command panel shown inside a sub page */
+#subPage #v-admin{display:block;flex:none;padding:0}
+#subPage #v-admin .list{padding:6px 16px 40px}

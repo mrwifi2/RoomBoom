@@ -142,7 +142,7 @@ async function flushOutbox(){
      if(!it.media&&it.row.body&&$("txt")&&!$("txt").value)$("txt").value=it.row.body;
     }else{
      const data=res.data;
-     if(room===it.row.room_id){msgs.set(data.id,data);draw(data);persistMsgs()}else msgs.delete(it.id);
+     if(room===it.row.room_id){msgs.set(data.id,data);draw(data);persistMsgs()}else{msgs.delete(it.id);const st=$("m-"+it.id);if(st)st.remove()}
     }
     RBC.saveOutbox(RBC.outbox().filter(x=>x.id!==it.id));
     if(it.media){RBM.del(it.id);const u=localURL.get(it.id);if(u)setTimeout(()=>{URL.revokeObjectURL(u);localURL.delete(it.id)},4000)}

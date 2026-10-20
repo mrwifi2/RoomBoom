@@ -172,7 +172,9 @@
   const t=e.touches[0],open=drawer.classList.contains("open");
   const base={x:t.clientX,y:t.clientY,mode:0,vt:VT(),W:drawer.offsetWidth||280};
   base.vt.push(t.clientX,e.timeStamp);
-  if(open){g=Object.assign(base,{kind:"close"});return}
+  if(open){
+   if(document.querySelector(".sidePanel.on")||(window.subPage&&subPage.isOpen()))return; /* something is open on top of the menu */
+   g=Object.assign(base,{kind:"close"});return}
   if(t.clientX<26||t.clientX>innerWidth-26)return; /* the phone's own back-swipe zone - leave it alone */
   if(anyOverlayOpen())return;
   if(curView==="rooms")g=Object.assign(base,{kind:"open"});

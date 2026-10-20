@@ -28,24 +28,21 @@
  $("spBack").innerHTML=RBI.svg("back");
  const card=mk("div",null,"");card.id="userCard";const cscrim=mk("div",null,"");cscrim.id="userScrim";
  document.body.appendChild(cscrim);document.body.appendChild(card);
- let fromDrawer=false;
  function closeCard(){if(!card.classList.contains("on"))return false;card.classList.remove("on");cscrim.classList.remove("on");return true}
  cscrim.onclick=closeCard;
  function closePage(){
   if(closeCard())return true;
   if(!page.classList.contains("on"))return false;
   page.classList.remove("on");
-  if(fromDrawer){fromDrawer=false;setTimeout(()=>{if(typeof openDrawer==="function"&&!page.classList.contains("on"))openDrawer()},60)} /* back goes to the menu, not the home screen */
   return true;
  }
  $("spBack").onclick=closePage;
  let curFill=null,curTitle="";
  function openPage(title,fill){
-  fromDrawer=$("drawer").classList.contains("open")||fromDrawer;
+
   curFill=fill;curTitle=title;$("spTitle").textContent=title;
   const b=$("spBody");b.innerHTML="";b.scrollTop=0;fill(b);
-  page.classList.add("on");
-  if($("drawer").classList.contains("open"))closeDrawer();
+  page.classList.add("on"); /* the menu stays open underneath - back just slides this page away */
  }
  const refill=()=>{if(curFill&&page.classList.contains("on")){const b=$("spBody"),y=b.scrollTop;b.innerHTML="";curFill(b);b.scrollTop=y}};
  window.subPage={open:openPage,close:closePage,isOpen:()=>page.classList.contains("on")||card.classList.contains("on")};
@@ -313,6 +310,9 @@
   if(n>0)bt.dataset.n=n>9?"9+":String(n);else delete bt.dataset.n;
  };
  if($("drawerBugs"))$("drawerBugs").onclick=()=>openPage("BUG REPORTS",bugsPage);
+ /* command panel: reuse the existing admin form + list, shown as a page over the menu */
+ const adminEl=$("v-admin"); /* keep our own reference: a page refill detaches it from the document */
+ $("drawerAdmin").onclick=()=>openPage("COMMAND PANEL",b=>{adminEl.classList.add("on");adminEl.style.animation="none";b.appendChild(adminEl);loadUsers()});
  function aboutPage(b){
   b.appendChild(mk("div","bigRB",'<b>RB</b><small>RoomBoom · v'+APP_VERSION+"</small>"));
   const kv=(k,v)=>{const d=mk("div","kv","<span></span><span></span>");d.children[0].textContent=k;d.children[1].textContent=v;b.appendChild(d);return d};
