@@ -158,6 +158,7 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
   <div class="modebar"><button data-th="red">RED</button><button data-th="amber">AMBER</button></div>
   <button id="drawerAdmin" style="display:none"><span data-ico="shield"></span><span class="lb">COMMAND PANEL</span></button>
   <button id="drawerAnnounce" style="display:none"><span data-ico="megaphone"></span><span class="lb">MAKE ANNOUNCEMENT</span></button>
+  <button id="drawerBugs" style="display:none"><span data-ico="bug"></span><span class="lb">BUG REPORTS</span></button>
   <button id="out" class="danger" style="display:none"><span data-ico="logout"></span><span class="lb">LOGOUT</span></button>
 </div>
 
@@ -326,7 +327,7 @@ const splashDone=new Promise(res=>{
 /* turn raw technical errors into something a normal person can read */
 function friendly(m){
  const raw=String((m&&m.message)||m||"");const s=raw.toLowerCase();
- try{console.warn("[rb]",raw)}catch(e){}
+ try{console.warn("[rb]",raw);RBlog.add("app",raw)}catch(e){}
  const R=[
   [/failed to fetch|networkerror|network request|load failed|net::|err_internet|fetch failed|econnreset/,"no internet connection - check your network and try again"],
   [/invalid login|invalid credentials|wrong password|invalid_grant/,"wrong username or passkey"],
@@ -472,6 +473,7 @@ function openDrawer(){
  $("setCallsign").value=me.callsign||"";
  $("drawerAdmin").style.display=me.role==="admin"?"":"none";
  $("drawerAnnounce").style.display=me.role==="admin"?"":"none";
+ if($("drawerBugs")){$("drawerBugs").style.display=me.role==="admin"?"":"none";if(me.role==="admin"&&window.refreshBugBadge)refreshBugBadge()}
  $("drawer").classList.add("open");$("drawerOverlay").classList.add("on");
 }
 function closeDrawer(){$("drawer").classList.remove("open");$("drawerOverlay").classList.remove("on")}
@@ -1046,7 +1048,7 @@ async function finishRec(send){
  }
 }
 let micTouchHandled=false;
-$("micBtn").addEventListener("touchstart",e=>{e.preventDefault();micTouchHandled=true;startRec()},{passive:false});
+$("micBtn").addEventListener("touchstart",e=>{if(e.cancelable)e.preventDefault();micTouchHandled=true;startRec()},{passive:false});
 $("micBtn").onclick=()=>{if(micTouchHandled){micTouchHandled=false;return}startRec()};
 $("recDelete").onclick=()=>finishRec(false);
 $("recSend").onclick=()=>finishRec(true);

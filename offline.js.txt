@@ -20,6 +20,27 @@ const RBC=(function(){
  return {get,set,del,clearAll,outbox,saveOutbox};
 })();
 
+
+/* ---------- RBlog: a small persistent error log (survives restarts) so bugs can be reported with real details ---------- */
+const RBlog=(()=>{
+ const K="rb_errlog";
+ const get=()=>{try{return JSON.parse(localStorage.getItem(K))||[]}catch(e){return[]}};
+ const add=(kind,msg)=>{
+  try{
+   let m=String((msg&&msg.message)||msg||"").slice(0,240);
+   if(!m||/ResizeObserver loop|^Script error\.?$/.test(m))return;
+   const a=get(),last=a[a.length-1];
+   if(last&&last.m===m&&Date.now()-last.t<3000)return;
+   let v="";try{v=curView}catch(e){}
+   a.push({t:Date.now(),k:kind,m,v});while(a.length>40)a.shift();
+   localStorage.setItem(K,JSON.stringify(a));
+  }catch(e){}
+ };
+ addEventListener("error",e=>add("js",(e.message||"error")+" @"+String(e.filename||"").split("/").pop()+":"+e.lineno));
+ addEventListener("unhandledrejection",e=>add("promise",(e.reason&&e.reason.message)||e.reason));
+ return{get,add,clear:()=>{try{localStorage.removeItem(K)}catch(e){}}};
+})();
+
 /* RBS: small local flags per chat (pinned / muted) */
 const RBS={
  get(k){try{return new Set(JSON.parse(localStorage.getItem(k))||[])}catch(e){return new Set()}},

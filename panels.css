@@ -70,3 +70,33 @@
 #userCard .ls{font-size:12px;color:var(--dim)}
 #userScrim{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .2s}
 #userScrim.on{opacity:1;pointer-events:auto}
+
+/* ---------- diagnostics ---------- */
+.dgSum{font-family:var(--mono,monospace);font-size:15px;padding:14px 4px 10px;letter-spacing:.5px;color:var(--dim)}
+.dgSum.ok{color:var(--g)}.dgSum.warn{color:#ffb020}.dgSum.fail{color:var(--r,#ff2e63)}
+.dgRow{display:flex;gap:12px;align-items:flex-start;padding:11px 4px}
+.dgRow b{display:block;font-weight:500;font-size:14px;color:var(--fg,#e8e8ea)}
+.dgRow small{display:block;margin-top:2px;font-size:12px;line-height:1.35;color:var(--dim);word-break:break-word}
+.dgDot{flex:none;width:9px;height:9px;border-radius:50%;margin-top:5px;background:#555;animation:dgp 1s infinite alternate}
+@keyframes dgp{to{opacity:.35}}
+.dgRow.ok .dgDot{background:var(--g);animation:none}.dgRow.warn .dgDot{background:#ffb020;animation:none}.dgRow.fail .dgDot{background:var(--r,#ff2e63);animation:none}
+.dgRow.fail small{color:var(--r,#ff2e63)}.dgRow.warn small{color:#ffb020}
+.dgActs{margin:10px 0 6px}
+.dgE{padding:8px 4px}.dgE b{display:block;font-weight:500;font-size:11px;color:var(--dim)}.dgE span{display:block;font-size:12.5px;word-break:break-word;color:var(--fg,#e8e8ea)}
+.dgNone{padding:8px 4px;font-size:13px;color:var(--dim)}
+
+/* ---------- bug reports (admin) ---------- */
+#drawerBugs{position:relative}
+#drawerBugs[data-n]:after{content:attr(data-n);position:absolute;right:16px;top:50%;transform:translateY(-50%);min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--r,#ff2e63);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
+.bgCard{margin:10px 0;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.04)}
+.bgHead{display:flex;align-items:center;gap:10px;cursor:pointer}
+.bgHead b{flex:1;font-weight:500;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bgHead small{font-size:11px;color:var(--dim);flex:none}
+.bgDot{flex:none;width:8px;height:8px;border-radius:50%;background:#555}
+.bgCard.new .bgDot{background:var(--g)}
+.bgPrev{margin-top:6px;font-size:12.5px;color:var(--dim);word-break:break-word;cursor:pointer}
+.bgFull{display:none;margin:10px 0 0;padding:10px;border-radius:10px;background:rgba(0,0,0,.35);font:11.5px/1.45 var(--mono,monospace);white-space:pre-wrap;word-break:break-word;color:var(--fg,#e8e8ea);max-height:340px;overflow:auto;user-select:text;-webkit-user-select:text}
+.bgCard.open .bgFull{display:block}
+.bgAct{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.bgAct button{display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:transparent;color:inherit}
+.bgAct button.danger{color:var(--r,#ff2e63);border-color:rgba(255,46,99,.35)}

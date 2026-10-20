@@ -4,7 +4,7 @@
    Also: tap a DM title -> small profile card.
    Uses main-script globals: $, me, profiles, sb, RBC, RBS, RBI, toast, modal, withBusy, openRoom, jumpToMsg, refreshRoomsLocal ... */
 (function(){
- const APP_VERSION="1.5";
+ const APP_VERSION="1.7";
  const jget=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}};
  const jset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
  const buzz=n=>{try{navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
@@ -161,12 +161,158 @@
  }
 
  /* ============================================================ about / help / debug */
- function debugText(){
-  const s=sizes();
+ function when(t){const d=new Date(t);return d.toLocaleDateString([],{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+ function debugText(extra){
+  const s=sizes(),lg=RBlog.get().slice(-12);
   return["RoomBoom v"+APP_VERSION,"user: @"+me.username+" ("+(me.role||"user")+")","online: "+navigator.onLine,
    "view: "+curView,"cache: "+fmtB(s.msgs+s.other),"queued: "+RBC.outbox().length,"screen: "+innerWidth+"x"+innerHeight,
-   "ua: "+navigator.userAgent,"errors: "+(errs.length?errs.join(" | "):"none")].join("\n");
+   "ua: "+navigator.userAgent,"","recent errors:"].concat(lg.length?lg.map(x=>"  "+when(x.t)+" ["+x.k+"/"+(x.v||"-")+"] "+x.m):["  none"]).concat(extra?["",extra]:[]).join("\n");
  }
+
+ /* ============================================================ diagnostics: checks the real server from this phone */
+ const NIL="x"; /* not a valid uuid on purpose: a function that exists answers "invalid input" and never runs */
+ function withTimeout(pr,ms){return Promise.race([pr,new Promise((_,rej)=>setTimeout(()=>rej(new Error("no answer (timeout)")),ms))])}
+ const errTxt=e=>String((e&&(e.message||e.error_description||e.error))||e||"");
+ const isPerm=e=>/permission denied|row-level security|42501/i.test(errTxt(e)+" "+((e&&e.code)||""));
+ const DIAG=[
+  ["internet",async()=>navigator.onLine?{s:"ok",n:"connected"}:{s:"fail",n:"phone is offline",h:"turn on wifi or mobile data"}],
+  ["login session",async()=>{const {data}=await sb.auth.getSession();return data&&data.session?{s:"ok",n:"signed in"}:{s:"fail",n:"no active session",h:"log out and log in again"}}],
+  ["server reachable",async()=>{const t0=performance.now();const r=await sb.from("profiles").select("id").limit(1);if(r.error)return{s:"fail",n:errTxt(r.error),h:"check the Supabase project is running"};return{s:"ok",n:Math.round(performance.now()-t0)+" ms"}}],
+  ["status line + last seen columns",async()=>{const r=await sb.from("profiles").select("bio,hide_last_seen").limit(1);return r.error?{s:"fail",n:errTxt(r.error),h:"run panels.sql in the Supabase SQL editor"}:{s:"ok",n:"present"}}],
+  ["can edit own status",async()=>{const r=await sb.from("profiles").update({bio:me.bio||""}).eq("id",me.id);return r.error?{s:"fail",n:errTxt(r.error),h:isPerm(r.error)?"run panels.sql again (it grants this permission)":"run panels.sql"}:{s:"ok",n:"allowed"}}],
+  ["can update last seen",async()=>{const r=await sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",me.id);return r.error?{s:"fail",n:errTxt(r.error),h:"check roomboom_schema.sql was run"}:{s:"ok",n:"allowed"}}],
+  ["chats list",async()=>{const r=await sb.from("room_members").select("room_id").eq("user_id",me.id).limit(1);return r.error?{s:"fail",n:errTxt(r.error)}:{s:"ok",n:"readable"}}],
+  ["messages",async()=>{const r=await sb.from("messages").select("id").limit(1);return r.error?{s:"fail",n:errTxt(r.error)}:{s:"ok",n:"readable"}}],
+  ["reactions",async()=>{const r=await sb.from("reactions").select("message_id").limit(1);return r.error?{s:"fail",n:errTxt(r.error)}:{s:"ok",n:"readable"}}],
+  ["notifications",async()=>{const r=await sb.from("notifications").select("id").limit(1);return r.error?{s:"fail",n:errTxt(r.error),h:"run notifications-schema.sql"}:{s:"ok",n:"readable"}}],
+  ["bug reports",async()=>{const r=await sb.from("bug_reports").select("id").limit(1);if(!r.error)return{s:"ok",n:"ready"};if(me.role!=="admin"&&isPerm(r.error))return{s:"ok",n:"ready"};return{s:"fail",n:errTxt(r.error),h:"run bug-reports.sql"}}],
+  ["announcements",async()=>{const r=await sb.from("announcements").select("id").limit(1);return r.error?{s:"fail",n:errTxt(r.error),h:"run announcements-schema.sql"}:{s:"ok",n:"readable"}}],
+  ["group + chat functions",async()=>{
+   const calls=[["create_dm",{other:NIL}],["create_room",{rtype:"group",rname:"x",members:[NIL]}],["rename_room",{rid:NIL,new_name:"x"}],["delete_room",{rid:NIL}],
+    ["add_room_member",{rid:NIL,uid:NIL}],["remove_room_member",{rid:NIL,uid:NIL}],["notify_user",{p_user_id:NIL,p_type:"x",p_title:"x"}]];
+   const miss=[];
+   await Promise.all(calls.map(async([fn,args])=>{const r=await sb.rpc(fn,args);const c=(r.error&&r.error.code)||"";if(r.error&&(c==="PGRST202"||c==="42883"||/could not find the function|does not exist/i.test(errTxt(r.error))))miss.push(fn)}));
+   return miss.length?{s:"fail",n:"missing: "+miss.join(", "),h:"run group-management.sql / notifications-schema.sql / admin-only-groups.sql"}:{s:"ok",n:calls.length+" functions found"};
+  }],
+  ["photo + voice storage",async()=>{const r=await sb.storage.from("media").createSignedUrl("diag/none.txt",10);const m=errTxt(r.error);
+   if(/bucket not found/i.test(m))return{s:"fail",n:"bucket 'media' missing",h:"create the private 'media' bucket"};
+   return{s:"ok",n:"bucket found"}}],
+  ["announcement files",async()=>{const r=await sb.storage.from("announcements").list("",{limit:1});return r.error?{s:/bucket not found/i.test(errTxt(r.error))?"fail":"warn",n:errTxt(r.error),h:"run announcements-files.sql"}:{s:"ok",n:"bucket found"}}],
+  ["live updates (realtime)",()=>new Promise(res=>{
+   let done=false;const ch=sb.channel("diag-"+Math.random().toString(36).slice(2));
+   const fin=v=>{if(done)return;done=true;try{sb.removeChannel(ch)}catch(e){}res(v)};
+   ch.subscribe(st=>{if(st==="SUBSCRIBED")fin({s:"ok",n:"connected"});else if(st==="CHANNEL_ERROR"||st==="TIMED_OUT")fin({s:"fail",n:st.toLowerCase().replace("_"," "),h:"check realtime is enabled for the project"})});
+   setTimeout(()=>fin({s:"warn",n:"slow to connect",h:"may be a weak network"}),7000);
+  })],
+  ["admin tools",async()=>{if(me.role!=="admin")return{s:"ok",n:"not an admin - skipped"};const r=await adminCall({action:"list"});return r&&r.error?{s:"fail",n:errTxt(r.error),h:"redeploy the admin-users edge function"}:{s:"ok",n:"edge function answers"}}]
+ ];
+ function diagPage(b){
+  const sum=mk("div","dgSum",""),list=mk("div","dgList",""),acts=mk("div","dgActs",""),errBox=mk("div","dgErr","");
+  b.appendChild(sum);b.appendChild(list);b.appendChild(acts);b.appendChild(errBox);
+  const results=[];
+  const again=mk("button","ppRow",RBI.svg("refresh")+'<span class="lb">RUN AGAIN</span><small></small>');
+  const copy=mk("button","ppRow",RBI.svg("bug")+'<span class="lb">SEND REPORT TO ADMIN</span><small>includes these results</small>');
+  acts.appendChild(again);acts.appendChild(copy);
+  function paintErrs(){
+   errBox.innerHTML="";errBox.appendChild(mk("div","spSec","&gt; RECENT ERRORS"));
+   const lg=RBlog.get().slice().reverse();
+   if(!lg.length)errBox.appendChild(mk("div","dgNone","no errors logged"));
+   lg.slice(0,15).forEach(x=>{const d=mk("div","dgE","<b></b><span></span>");d.children[0].textContent=when(x.t)+" · "+x.k+(x.v?" · "+x.v:"");d.children[1].textContent=x.m;errBox.appendChild(d)});
+   if(lg.length){const c=mk("button","ppRow",RBI.svg("trash")+'<span class="lb">CLEAR LOG</span><small></small>');c.onclick=()=>{RBlog.clear();paintErrs()};errBox.appendChild(c)}
+  }
+  async function run(){
+   results.length=0;list.innerHTML="";sum.textContent="> checking...";sum.className="dgSum";
+   const rows=DIAG.map(([name])=>{const r=mk("div","dgRow",'<i class="dgDot"></i><div><b></b><small>checking...</small></div>');r.querySelector("b").textContent=name;list.appendChild(r);return r});
+   await Promise.all(DIAG.map(async([name,fn],i)=>{
+    let res;try{res=await withTimeout(fn(),9000)}catch(e){res={s:"fail",n:errTxt(e)||"failed",h:isNetErr(e)?"check your internet":""}}
+    results[i]={name,...res};
+    const r=rows[i];r.className="dgRow "+res.s;r.querySelector("small").textContent=res.n+(res.h&&res.s!=="ok"?" — "+res.h:"");
+   }));
+   const bad=results.filter(x=>x&&x.s==="fail").length,warn=results.filter(x=>x&&x.s==="warn").length;
+   sum.className="dgSum "+(bad?"fail":warn?"warn":"ok");
+   sum.textContent=bad?"> "+bad+" PROBLEM"+(bad>1?"S":"")+" FOUND":warn?"> WORKS, "+warn+" WARNING"+(warn>1?"S":""):"> ALL SYSTEMS GO";
+   paintErrs();
+  }
+  again.onclick=run;
+  copy.onclick=async()=>{
+   const rep=results.filter(Boolean).map(x=>(x.s==="ok"?"[ok]   ":x.s==="warn"?"[warn] ":"[FAIL] ")+x.name+": "+x.n+(x.h&&x.s!=="ok"?" ("+x.h+")":"")).join("\n");
+   await sendBugReport("diagnostics:\n"+(rep||"not run yet"));
+  };
+  paintErrs();run();
+ }
+
+ /* ============================================================ bug reports: user -> admins */
+ const BUGQ="rb_bugq";
+ let lastBugAt=0;
+ async function sendBugReport(extra){
+  if(Date.now()-lastBugAt<20000){toast("report already sent - thank you");return false}
+  const row={user_id:me.id,report:debugText(extra)};
+  const {error}=await sb.from("bug_reports").insert(row);
+  if(error){
+   if(isNetErr(error)){const q=jget(BUGQ,[]);q.push(row);jset(BUGQ,q.slice(-5));toast("no internet - the report will be sent when you are back online");return true}
+   toast(error,"err");return false;
+  }
+  lastBugAt=Date.now();toast("report sent to the admin - thank you");return true;
+ }
+ async function flushBugQ(){
+  if(!navigator.onLine||typeof me==="undefined"||!me)return;
+  let q=jget(BUGQ,[]);if(!q.length)return;
+  while(q.length){
+   const {error}=await sb.from("bug_reports").insert(q[0]);
+   if(error&&isNetErr(error))break;
+   q.shift();jset(BUGQ,q);
+  }
+ }
+ setInterval(flushBugQ,15000);addEventListener("online",flushBugQ);
+
+ const setupHint=e=>/does not exist|schema cache|could not find|relation/i.test(errTxt(e))?"not set up yet - run bug-reports.sql in the Supabase SQL editor":friendly(e);
+ function bugsPage(b){
+  const sum=mk("div","dgSum",""),list=mk("div","bgList","");b.appendChild(sum);b.appendChild(list);
+  let rows=[];
+  const nameOf=uid=>{const q=profiles[uid];return q?((q.callsign||q.username)+" (@"+q.username+")"):"unknown operative"};
+  const textOf=r=>"bug report from "+nameOf(r.user_id)+" - "+when(new Date(r.created_at).getTime())+"\n\n"+r.report;
+  function paintSum(){const n=rows.filter(r=>r.status==="new").length;sum.className="dgSum"+(n?" warn":" ok");sum.textContent=rows.length?("> "+n+" NEW · "+rows.length+" TOTAL"):"> NO REPORTS YET";if(window.refreshBugBadge)refreshBugBadge(n)}
+  function paint(){
+   list.innerHTML="";paintSum();
+   if(rows.some(r=>r.status==="new")){
+    const ca=mk("button","ppRow",RBI.svg("copy")+'<span class="lb">COPY ALL NEW</span><small></small>');
+    ca.onclick=async()=>{const ok=await copyText(rows.filter(r=>r.status==="new").map(textOf).join("\n\n----------\n\n"));toast(ok?"copied":"could not copy",ok?undefined:"err")};
+    list.appendChild(ca);
+   }
+   rows.forEach(r=>{
+    const m=(r.report.split("recent errors:\n")[1]||"").split("\n")[0].trim();
+    const c=mk("div","bgCard"+(r.status==="new"?" new":""),'<div class="bgHead"><i class="bgDot"></i><b></b><small></small></div><div class="bgPrev"></div><pre class="bgFull"></pre><div class="bgAct"></div>');
+    c.querySelector("b").textContent=nameOf(r.user_id);
+    c.querySelector("small").textContent=when(new Date(r.created_at).getTime());
+    c.querySelector(".bgPrev").textContent=(m&&m!=="none")?m:"no errors logged";
+    c.querySelector(".bgFull").textContent=r.report;
+    c.querySelector(".bgHead").onclick=()=>c.classList.toggle("open");c.querySelector(".bgPrev").onclick=()=>c.classList.toggle("open");
+    const act=c.querySelector(".bgAct");
+    const cp=mk("button",null,RBI.label("copy","COPY"));cp.onclick=async()=>{const ok=await copyText(textOf(r));toast(ok?"copied":"could not copy",ok?undefined:"err")};
+    const dn=mk("button",null,RBI.label("check",r.status==="new"?"DONE":"REOPEN"));
+    dn.onclick=async()=>{const st=r.status==="new"?"done":"new";const {error}=await sb.from("bug_reports").update({status:st}).eq("id",r.id);if(error){toast(error,"err");return}r.status=st;paint()};
+    const dl=mk("button","danger",RBI.label("trash","DELETE"));
+    dl.onclick=async()=>{const ok=await modal({title:"> delete this report?",okText:"DELETE"});if(!ok)return;const {error}=await sb.from("bug_reports").delete().eq("id",r.id);if(error){toast(error,"err");return}rows=rows.filter(x=>x.id!==r.id);paint()};
+    act.appendChild(cp);act.appendChild(dn);act.appendChild(dl);
+    list.appendChild(c);
+   });
+  }
+  sum.textContent="> loading...";
+  sb.from("bug_reports").select("*").order("created_at",{ascending:false}).limit(100).then(({data,error})=>{
+   if(error){sum.className="dgSum fail";sum.textContent="> "+setupHint(error);return}
+   rows=data||[];paint();
+  });
+ }
+ window.refreshBugBadge=async n=>{
+  const bt=$("drawerBugs");if(!bt)return;
+  if(typeof n!=="number"){
+   if(me.role!=="admin")return;
+   const r=await sb.from("bug_reports").select("id",{count:"exact",head:true}).eq("status","new");
+   n=r.error?0:(r.count||0);
+  }
+  if(n>0)bt.dataset.n=n>9?"9+":String(n);else delete bt.dataset.n;
+ };
+ if($("drawerBugs"))$("drawerBugs").onclick=()=>openPage("BUG REPORTS",bugsPage);
  function aboutPage(b){
   b.appendChild(mk("div","bigRB",'<b>RB</b><small>RoomBoom · v'+APP_VERSION+"</small>"));
   const kv=(k,v)=>{const d=mk("div","kv","<span></span><span></span>");d.children[0].textContent=k;d.children[1].textContent=v;b.appendChild(d);return d};
@@ -183,8 +329,9 @@
     lt.querySelector("small").textContent=ms+" ms";conn.children[1].textContent="online";toast("link ok · "+ms+" ms");
    }catch(e){lt.querySelector("small").textContent="unreachable";conn.children[1].textContent="offline";toast("server not reachable","err")}
   });
-  row("bug","REPORT A BUG","copies debug info",async()=>{
-   const ok=await copyText(debugText());toast(ok?"debug info copied - paste it to the developer":"could not copy",ok?undefined:"err");
+  const bugRow=row("bug","REPORT A BUG","sends the details to the admin",async()=>{
+   const sub=bugRow.querySelector("small"),t0=sub.textContent;sub.textContent="sending...";
+   await sendBugReport();sub.textContent=t0;
   });
  }
 
@@ -193,7 +340,7 @@
   const dr=$("drawer"),anchor=$("drawerAdmin");
   dr.insertBefore(mk("div","dsec","&gt; TOOLS"),anchor);
   [["star","STARRED MESSAGES",starsPage],["archive","ARCHIVED CHATS",archPage],["terminal","TERMINAL COMMANDS",cmdsPage],
-   ["database","STORAGE & CACHE",storagePage],["info","ABOUT & HELP",aboutPage]].forEach(([ic,t,fn])=>{
+   ["database","STORAGE & CACHE",storagePage],["pulse","DIAGNOSTICS",diagPage],["info","ABOUT & HELP",aboutPage]].forEach(([ic,t,fn])=>{
     const b=mk("button","dtool",RBI.label(ic,t));
     b.onclick=()=>openPage(t,fn);
     dr.insertBefore(b,anchor);
