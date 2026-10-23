@@ -92,3 +92,10 @@
 /* ---------- personal notification cards (notification centre > notifications tab) ---------- */
 .notifCard.unread{border-color:var(--g);background:rgba(0,255,156,.06)}
 .notifCard.unread .ttl{color:var(--g)}
+
+/* ---- swipe a notification away to delete it ---- */
+.nSwipe{position:relative;border-radius:12px}
+.nSwipe .annCard{position:relative;z-index:1;touch-action:pan-y;margin:0}
+.nSwipe .nBg{position:absolute;inset:0;border-radius:12px;background:rgba(255,46,99,.14);color:var(--r,#ff2e63);display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-right:20px;font-size:11px;letter-spacing:1px;opacity:calc(var(--p,0)*1.2)}
+.nSwipe .nBg .i{width:18px;height:18px}
+.nSwipe+.nSwipe{margin-top:10px}

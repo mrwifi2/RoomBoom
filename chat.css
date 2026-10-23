@@ -9,9 +9,9 @@
 #chatBar,#recBar{background:var(--bg)}
 
 /* bubbles: time lives off-screen to the right until the chat is dragged left */
-.m{position:relative;transform:translateX(calc(var(--dx,0px)*-1));transition:transform .34s cubic-bezier(.2,.9,.3,1.12),background .15s}
+.m{position:relative;transition:transform .34s cubic-bezier(.2,.9,.3,1.12),background .15s}
 #msgs.dragging .m{transition:none}
-.m .t{position:absolute;left:100%;top:50%;margin:0 0 0 14px;transform:translateY(-50%);opacity:var(--p,0);white-space:nowrap;pointer-events:none;font-size:10px}
+.m .t{position:absolute;left:100%;top:50%;margin:0 0 0 14px;transform:translateY(-50%);opacity:0;white-space:nowrap;pointer-events:none;font-size:10px}
 .m .tk{position:absolute;right:7px;bottom:4px;margin:0}
 .m.me .x:after{content:"";display:inline-block;width:20px}
 .m.pressing{background:var(--panel2)}

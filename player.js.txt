@@ -1,0 +1,62 @@
+/* ===== RoomBoom: custom voice-note player (replaces the browser's default <audio controls>) =====
+   RBplayer.make(m, urlPromise, mine) -> element. Only one voice note plays at a time. */
+(function(){
+ "use strict";
+ const BARS=30,SPEEDS=[1,1.5,2];
+ let cur=null;
+ const fmt=s=>{if(!isFinite(s)||s<0)s=0;s=Math.round(s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
+ function seeded(str){let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)}return()=>{h^=h<<13;h^=h>>>17;h^=h<<5;return((h>>>0)%1000)/1000}}
+ function make(m,urlP,mine){
+  const el=document.createElement("div");el.className="vp"+(mine?" mine":"");
+  const rnd=seeded(String(m.id||m.media_path||Math.random()));
+  let bars="";for(let i=0;i<BARS;i++){const h=18+Math.round(Math.pow(rnd(),.8)*82);bars+='<i style="height:'+h+'%"></i>'}
+  el.innerHTML='<button class="vpBtn" aria-label="play"><svg viewBox="0 0 24 24"><path class="vpPlay" d="M8 5.5v13l11-6.5z"/><path class="vpPause" d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z"/></svg></button>'+
+   '<div class="vpMid"><div class="vpWave">'+bars+'</div><div class="vpTime">0:00</div></div><button class="vpSpd">1x</button>';
+  const btn=el.querySelector(".vpBtn"),wave=el.querySelector(".vpWave"),tm=el.querySelector(".vpTime"),spd=el.querySelector(".vpSpd"),bs=wave.children;
+  let a=null,dur=0,si=0,ready=null,raf=0,drag=false;
+  const stopEv=e=>e.stopPropagation();
+  ["click","touchstart"].forEach(t=>el.addEventListener(t,stopEv,{passive:true}));
+  function paint(){
+   const p=dur?a.currentTime/dur:0,n=Math.round(p*BARS);
+   for(let i=0;i<BARS;i++)bs[i].classList.toggle("on",i<n);
+   tm.textContent=a&&(!a.paused||a.currentTime>0)?fmt(a.currentTime)+" / "+fmt(dur):fmt(dur);
+  }
+  function loop(){paint();if(a&&!a.paused)raf=requestAnimationFrame(loop)}
+  function load(){
+   if(ready)return ready;
+   ready=Promise.resolve(urlP).then(u=>new Promise((res,rej)=>{
+    if(!u){rej();return}
+    a=new Audio();a.preload="metadata";a.src=u;
+    const done=()=>{dur=isFinite(a.duration)?a.duration:dur;res()};
+    a.onloadedmetadata=()=>{
+     if(a.duration===Infinity||isNaN(a.duration)){ /* MediaRecorder files: force the real length */
+      a.currentTime=1e101;a.ontimeupdate=()=>{a.ontimeupdate=null;dur=a.duration;a.currentTime=0;paint();res()}}
+     else done();
+    };
+    a.onerror=()=>rej();
+    a.onended=()=>{el.classList.remove("playing");a.currentTime=0;paint();cur=null};
+    a.onpause=()=>el.classList.remove("playing");
+    a.onplay=()=>{el.classList.add("playing");cancelAnimationFrame(raf);loop()};
+   })).then(()=>paint()).catch(()=>{ready=null;tm.textContent="unavailable"});
+   return ready;
+  }
+  el._load=load;
+  btn.onclick=async()=>{
+   await load();if(!a)return;
+   if(a.paused){
+    if(cur&&cur!==a)cur.pause();
+    cur=a;a.playbackRate=SPEEDS[si];try{await a.play()}catch(e){}
+   }else a.pause();
+  };
+  spd.onclick=()=>{si=(si+1)%SPEEDS.length;spd.textContent=SPEEDS[si]+"x";if(a)a.playbackRate=SPEEDS[si]};
+  /* scrub by dragging on the waveform */
+  const seek=x=>{const r=wave.getBoundingClientRect();const p=Math.max(0,Math.min(1,(x-r.left)/r.width));if(a&&dur){a.currentTime=p*dur;paint()}};
+  wave.addEventListener("touchstart",async e=>{await load();drag=true;seek(e.touches[0].clientX)},{passive:true});
+  wave.addEventListener("touchmove",e=>{if(drag)seek(e.touches[0].clientX)},{passive:true});
+  wave.addEventListener("touchend",()=>{drag=false},{passive:true});
+  wave.addEventListener("click",async e=>{await load();seek(e.clientX)});
+  load(); /* read the length up-front so it shows 0:07 instead of 0:00 */
+  return el;
+ }
+ window.RBplayer={make};
+})();

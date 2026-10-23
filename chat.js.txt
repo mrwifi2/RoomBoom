@@ -78,11 +78,9 @@
    const done=()=>toast("copied");
    try{navigator.clipboard.writeText(m.body).then(done,done)}catch(e){done()}
   });
-  if(mine&&textOnly)add("edit","EDIT",()=>{editing=m.id;replyTo=null;$("txt").value=m.body;updBars();$("txt").focus()});
+  if(canEdit(m))add("edit","EDIT",()=>{editing=m.id;replyTo=null;$("txt").value=m.body;updBars();$("txt").focus()});
   if(mine)add("trash","DELETE",async()=>{
-   const u={body:DEL,edited_at:new Date().toISOString()};
-   const {error}=await sb.from("messages").update(u).eq("id",m.id);
-   if(!error){Object.assign(m,u);draw(m)}else toast(error,"err");
+   if(await modal({title:"> delete this message for everyone?",okText:"DELETE"}))unsendMessage(m);
   },true);
   openedAt=Date.now();
   requestAnimationFrame(()=>{menu.classList.add("on");scrim.classList.add("on")});
@@ -122,9 +120,13 @@
    else if(dx<0)st.kind="ts";
    else{st.mode=-1;return}
    st.own=own;st.mode=1;box.classList.add("dragging");
-   if(st.kind==="ts"){ /* line every time up in one column at the right edge */
-    const W=box.clientWidth;
-    box.querySelectorAll(".m:not(.me)").forEach(el=>{const t=el.querySelector(".t");if(t)t.style.left=(W-12+14-el.offsetLeft-el.offsetWidth)+"px"});
+   if(st.kind==="ts"){ /* only the messages you can actually see take part: cheap even in a chat with thousands of messages */
+    const W=box.clientWidth,br=box.getBoundingClientRect(),vis=[];
+    const all=box.children;
+    for(let i=all.length-1;i>=0;i--){const el=all[i];if(!el.classList.contains("m"))continue;const r=el.getBoundingClientRect();if(r.bottom<br.top-80)break;if(r.top<=br.bottom+80)vis.push(el)}
+    const meas=vis.map(el=>({el,t:el.querySelector(".t"),x:el.classList.contains("me")?0:(W-12+14-el.offsetLeft-el.offsetWidth)})); /* all reads first ... */
+    meas.forEach(o=>{o.el.style.transition="none";o.el.style.willChange="transform";if(o.t){if(!o.el.classList.contains("me"))o.t.style.left=o.x+"px";o.t.style.willChange="opacity"}}); /* ... then all writes */
+    st.vis=meas;
    }
    if(st.kind==="reply"){
     const i=document.createElement("span");i.className="swIco";i.innerHTML=RBI.svg("reply");st.el.appendChild(i);st.ico=i;
@@ -140,8 +142,8 @@
    const hit=sh>=TH;
    if(hit!==st.hit){st.hit=hit;st.ico.classList.toggle("hit",hit);if(hit)buzz(10)}
   }else{
-   const sh=Math.min(TS_MAX,raw<=TS_MAX*.8?raw:TS_MAX*.8+(raw-TS_MAX*.8)*.25);
-   box.style.setProperty("--dx",sh+"px");box.style.setProperty("--p",String(clamp(sh/46,0,1)));
+   const sh=Math.min(TS_MAX,raw<=TS_MAX*.8?raw:TS_MAX*.8+(raw-TS_MAX*.8)*.25),p=String(clamp(sh/46,0,1)),tx="translate3d("+(-sh)+"px,0,0)";
+   const v=st.vis||[];for(let i=0;i<v.length;i++){v[i].el.style.transform=tx;if(v[i].t)v[i].t.style.opacity=p}
   }
  },{passive:true});
 
@@ -157,8 +159,9 @@
    setTimeout(()=>{el.style.transition=el.style.transform="";if(ico)ico.remove()},360);
    if(fire){replyTo=s.m.id;editing=null;updBars();$("txt").focus()}
   }else{
-   box.style.setProperty("--dx","0px");box.style.setProperty("--p","0");
-   setTimeout(()=>{if(!box.classList.contains("dragging"))box.querySelectorAll(".m .t").forEach(t=>t.style.left="")},380);
+   const v=s.vis||[];
+   v.forEach(o=>{o.el.style.transition="transform .3s cubic-bezier(.2,.9,.3,1)";o.el.style.transform="";if(o.t){o.t.style.transition="opacity .2s";o.t.style.opacity=""}});
+   setTimeout(()=>{if(box.classList.contains("dragging"))return;v.forEach(o=>{o.el.style.transition=o.el.style.willChange=o.el.style.transform="";if(o.t){o.t.style.left=o.t.style.transition=o.t.style.willChange=o.t.style.opacity=""}})},340);
   }
  }
  box.addEventListener("touchend",endTouch,{passive:true});

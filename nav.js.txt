@@ -120,28 +120,90 @@ function subscribeAnnouncements(){
 /* ---------- personal notifications (new message / group add / admin action)
    wired to Supabase "notifications" table — phase 2b ---------- */
 function notifIcon(t){return t==="message"?"chat":t==="group_add"?"users":"shield"}
+/* what the notification says: never the message itself, just who and what kind of thing */
+function notifText(n){
+ if(n.type!=="message")return{title:n.title||"",body:n.body||""};
+ const grp=((n.title||"").match(/ in # (.+)$/)||[])[1];
+ const p=n.actor_id&&profiles[n.actor_id];
+ let who=p?"@"+p.username:(n.title||"someone").replace(/ in # .+$/,"");
+ if(/^@/.test(n.title||""))who=n.title.replace(/ in # .+$/,"");
+ const kind=/^sent a (photo|voice note|message)$/.test(n.body||"")?n.body:"sent a message";
+ return{title:who,body:kind+(grp?" in # "+grp:"")};
+}
+/* notifications the user removed (also remembered here, in case the server refuses the delete) */
+const nDel={get(){try{return new Set(JSON.parse(localStorage.getItem("rb_notif_del"))||[])}catch(e){return new Set()}},
+ add(id){const s=nDel.get();s.add(id);try{localStorage.setItem("rb_notif_del",JSON.stringify([...s].slice(-300)))}catch(e){}}};
+function notifEmptyHtml(){return '<div class="panelEmpty">&gt; no notifications yet<br><small style="opacity:.7">new messages, group adds &amp; account updates will appear here</small></div>'}
+function deleteNotification(n,wrap){
+ nDel.add(n.id);
+ notifList=notifList.filter(x=>x.id!==n.id);RBC.set("notifs",notifList);
+ const body=$("notifBody");body.dataset.sig="n:"+notifList.map(x=>x.id).join(",");
+ if(!notifList.length)setTimeout(()=>{if(!body.querySelector(".nSwipe"))body.innerHTML=notifEmptyHtml()},260);
+ sb.from("notifications").delete().eq("id",n.id).eq("user_id",me.id).then(()=>{},()=>{});
+ checkBellDot();
+}
+/* drag a card left to delete it: follows the finger, flies off, then the gap closes smoothly */
+function swipeToDelete(wrap,card,onDelete){
+ let st=null;
+ const TH=96;
+ card.addEventListener("touchstart",e=>{
+  if(e.touches.length!==1){st=null;return}
+  const t=e.touches[0];st={x:t.clientX,y:t.clientY,mode:0,dx:0,t0:e.timeStamp};
+ },{passive:true});
+ card.addEventListener("touchmove",e=>{
+  if(!st)return;const t=e.touches[0],dx=t.clientX-st.x,dy=t.clientY-st.y;
+  if(st.mode===0){
+   if(Math.abs(dx)<10&&Math.abs(dy)<10)return;
+   if(Math.abs(dy)>Math.abs(dx)*.8||dx>0){st=null;return}
+   st.mode=1;card.style.transition="none";card.style.willChange="transform";wrap.classList.add("sw");
+  }
+  st.dx=Math.min(0,dx);st.v=st.dx/Math.max(1,e.timeStamp-st.t0);
+  card.style.transform="translate3d("+st.dx+"px,0,0)";
+  wrap.style.setProperty("--p",String(Math.min(1,-st.dx/TH)));
+ },{passive:true});
+ const end=ev=>{
+  if(!st)return;const s=st;st=null;if(s.mode!==1)return;
+  const go=ev&&ev.type==="touchend"&&(-s.dx>TH||(s.v<-.6&&-s.dx>40));
+  if(!go){card.style.transition="transform .28s cubic-bezier(.2,.9,.3,1.1)";card.style.transform="";wrap.style.setProperty("--p","0");
+   setTimeout(()=>{card.style.willChange="";wrap.classList.remove("sw")},300);return}
+  const h=wrap.offsetHeight;
+  card.style.transition="transform .22s cubic-bezier(.4,0,1,1),opacity .22s";card.style.transform="translate3d(-110%,0,0)";card.style.opacity="0";
+  setTimeout(()=>{ /* close the gap */
+   wrap.style.height=h+"px";wrap.style.overflow="hidden";void wrap.offsetHeight;
+   wrap.style.transition="height .24s cubic-bezier(.3,.8,.3,1),margin .24s,opacity .2s";wrap.style.height="0px";wrap.style.marginTop="0px";wrap.style.marginBottom="0px";wrap.style.opacity="0";
+   setTimeout(()=>{wrap.remove();onDelete()},250);
+  },200);
+ };
+ card.addEventListener("touchend",end,{passive:true});card.addEventListener("touchcancel",()=>end(null),{passive:true});
+}
 function renderNotifCard(n){
+ const wrap=document.createElement("div");wrap.className="nSwipe";
+ const bg=document.createElement("div");bg.className="nBg";bg.innerHTML=RBI.svg("trash")+"<span>DELETE</span>";
  const d=document.createElement("div");d.className="annCard notifCard"+(n.read_at?"":" unread");
+ const tx=notifText(n);
  const at=document.createElement("span");at.className="at";at.textContent=annTime(n.created_at);
- const ttl=document.createElement("span");ttl.className="ttl";ttl.innerHTML=RBI.svg(notifIcon(n.type))+"<span></span>";ttl.lastChild.textContent=n.title||"";
+ const ttl=document.createElement("span");ttl.className="ttl";ttl.innerHTML=RBI.svg(notifIcon(n.type))+"<span></span>";ttl.lastChild.textContent=tx.title;
  d.appendChild(at);d.appendChild(ttl);
- if(n.body){const bd=document.createElement("div");bd.className="bd";bd.textContent=n.body;d.appendChild(bd)}
+ if(tx.body){const bd=document.createElement("div");bd.className="bd";bd.textContent=tx.body;d.appendChild(bd)}
  if((n.type==="message"||n.type==="group_add")&&n.room_id){
   d.style.cursor="pointer";
   d.onclick=()=>{closeNotifPanel();openRoomById(n.room_id)};
  }
- return d;
+ wrap.appendChild(bg);wrap.appendChild(d);
+ swipeToDelete(wrap,d,()=>deleteNotification(n,wrap));
+ return wrap;
 }
 async function loadNotifications(){
  const body=$("notifBody");
- const cached=RBC.get("notifs");
+ const gone=nDel.get();
+ const cached=(RBC.get("notifs")||[]).filter(x=>!gone.has(x.id));
  if(cached&&cached.length){notifList=cached;paintList(body,notifList,renderNotifCard,"n")}
  else{body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; loading...</div>'}
  const {data,error}=await sb.from("notifications").select("*").eq("user_id",me.id).order("created_at",{ascending:false}).limit(50);
  if(error&&cached&&cached.length)return;
  if(error){body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; failed to load notifications<br><small style="opacity:.7">'+error.message+'</small></div>';return}
- notifList=data||[];
- if(!notifList.length){body.dataset.sig="";body.innerHTML='<div class="panelEmpty">&gt; no notifications yet<br><small style="opacity:.7">new messages, group adds &amp; account updates will appear here</small></div>'}
+ notifList=(data||[]).filter(x=>!gone.has(x.id));
+ if(!notifList.length){body.dataset.sig="";body.innerHTML=notifEmptyHtml()}
  else paintList(body,notifList,renderNotifCard,"n")
  const unreadIds=notifList.filter(n=>!n.read_at).map(n=>n.id);
  if(unreadIds.length){
@@ -170,7 +232,7 @@ async function openRoomById(roomId){
 }
 function subscribeNotifications(){
  sb.channel("notif_"+me.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+me.id},p=>{
-  if(!(p.new.room_id&&RBS.has("rb_mutes",p.new.room_id))){toast(p.new.title||"new notification");
+  if(!(p.new.room_id&&RBS.has("rb_mutes",p.new.room_id))){const tx=notifText(p.new);toast(p.new.type==="message"?tx.title+" "+tx.body:(tx.title||"new notification"));
   $("notifDot").style.display=""}
   if($("notifPanel").classList.contains("on")&&$("tabNotif").classList.contains("active")){
    notifList.unshift(p.new);$("notifBody").prepend(renderNotifCard(p.new));$("notifBody").dataset.sig="n:"+notifList.map(x=>x.id).join(",");

@@ -141,6 +141,9 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
 <link rel="stylesheet" href="chat.css">
 <link rel="stylesheet" href="home.css">
 <link rel="stylesheet" href="panels.css">
+<link rel="stylesheet" href="boom.css">
+<link rel="stylesheet" href="player.css">
+<link rel="stylesheet" href="picker.css">
 </head>
 <body>
 <canvas id="rain"></canvas>
@@ -193,8 +196,8 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
     <div id="typing"></div>
     <div id="ctx"></div>
     <div class="bar" id="chatBar">
-      <button id="boomBtn" class="icon-btn"><span data-ico="bomb"></span></button>
-      <button id="attBtn" class="icon-btn"><span data-ico="clip"></span></button>
+      <button id="camBtn" class="icon-btn"><span data-ico="camera"></span></button>
+      <button id="linkBtn" class="icon-btn"><span data-ico="clip"></span></button>
       <button id="micBtn" class="icon-btn"><span data-ico="mic"></span></button>
       <input id="txt" placeholder="> transmit..." autocomplete="off">
       <button id="send" class="icon-btn"><span data-ico="send"></span></button>
@@ -452,6 +455,7 @@ let viewStack=["rooms"];
 function afterNav(v){if(v==="rooms")mrp.then(loadRooms);if(v==="ops")setTitle("> OPERATIVES");if(v==="admin")setTitle("> COMMAND")}
 function go(v){if(viewStack[viewStack.length-1]!==v)viewStack.push(v);show(v);afterNav(v)}
 function backNav(){
+ if(window.RBpicker&&RBpicker.isOpen()){RBpicker.closeAll();return}
  if(window.subPage&&subPage.close())return;
  if(typeof closeAnnouncePanel==="function"&&$("announcePanel").classList.contains("on")){closeAnnouncePanel();return}
  if(typeof closeNotifPanel==="function"&&$("notifPanel").classList.contains("on")){closeNotifPanel();return}
@@ -602,10 +606,10 @@ function pvInto(el,m){
  const add=(ic,t)=>{if(ic)el.insertAdjacentHTML("beforeend",RBI.svg(ic));const s=document.createElement("span");s.className="tx";s.textContent=t;el.appendChild(s)};
  if(!m){add(null,"no messages yet");return}
  const you=m.sender_id===me.id?"you: ":"";
- if(m.body===DEL)add("ban",you+"message purged");
- else if(m.expires_at)add("bomb",you+"boom message");
+ if(m.expires_at)add("bomb",you+"boom message");
  else if(m.media_type==="image")add("camera",you+"photo");
  else if(m.media_type==="voice")add("mic",you+"voice note");
+ else if(m.media_type==="file")add("clip",you+(m.body||"file"));
  else add(null,you+(m.body||""));
 }
 function renderRoomRows(rows,anim){
@@ -659,7 +663,7 @@ async function loadRooms(){
  if(!ms.length&&!navigator.onLine)return;
  const by={};ms.forEach(m=>(by[m.room_id]??=[]).push(m));
  const last={},unread={},now=Date.now(),anim=!roomsShown;roomsShown=true;
- (lm||[]).forEach(m=>{if(m.expires_at&&T(m.expires_at)<now)return;
+ (lm||[]).forEach(m=>{if(m.body===DEL)return;if(m.expires_at&&T(m.expires_at)<now)return;
   last[m.room_id]??=m;const mine=by[m.room_id]?.find(x=>x.user_id===me.id);
   if(m.sender_id!==me.id&&mine&&T(m.created_at)>T(mine.last_read_at)&&m.body!==DEL)unread[m.room_id]=(unread[m.room_id]||0)+1});
  const rows=Object.values(by).map(arr=>{const r=arr[0].rooms,o=arr.find(m=>m.user_id!==me.id);
@@ -748,8 +752,9 @@ async function openRoom(id,name,type){
  markRead();
  chan=sb.channel("m-"+id)
   .on("postgres_changes",{event:"*",schema:"public",table:"messages",filter:"room_id=eq."+id},p=>{
-    if(!p.new||!p.new.id)return;msgs.set(p.new.id,p.new);draw(p.new);persistMsgs();
+    if(!p.new||!p.new.id)return;if(p.new.body===DEL){dropMsgLocal(p.new.id);return}msgs.set(p.new.id,p.new);draw(p.new);persistMsgs();
     if(p.eventType==="INSERT"&&p.new.sender_id!==me.id&&!document.hidden)markRead()})
+  .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages"},p=>{const rid=p.old&&p.old.id;if(rid&&msgs.has(rid))dropMsgLocal(rid)}) /* someone unsent a message */
   .on("postgres_changes",{event:"UPDATE",schema:"public",table:"room_members",filter:"room_id=eq."+id},p=>{
     if(p.new.user_id!==me.id){otherRead=Math.max(otherRead||0,T(p.new.last_read_at));paintTicks()}})
   .on("postgres_changes",{event:"*",schema:"public",table:"reactions"},()=>loadRx().then(()=>msgs.forEach(m=>paintRx(m.id))))
@@ -809,7 +814,8 @@ function draw(m){
  const pending=!!m._pending;
  const left=m.expires_at?T(m.expires_at)-Date.now():null;
  if(!pending&&left!==null&&left<=0){$("m-"+m.id)?.remove();return}
- const gone=m.body===DEL,box=$("msgs");let d=$("m-"+m.id);const isNew=!d;let stick=false;
+ if(m.body===DEL){const e=$("m-"+m.id);if(e)collapseOut(e);return}
+ const gone=false,box=$("msgs");let d=$("m-"+m.id);const isNew=!d;let stick=false;
  if(isNew){
   stick=loading||m.sender_id===me.id||box.scrollHeight-box.scrollTop-box.clientHeight<160;
   if(!pending){
@@ -821,12 +827,11 @@ function draw(m){
  d.innerHTML='<div class="n"></div><div class="q"></div><div class="x"></div><div class="rx"></div><span class="t"></span> <span class="tk"></span>';
  const nm=profiles[m.sender_id]?.callsign||"???",n=d.querySelector(".n");n.textContent=nm+" >";n.prepend(av(nm,18));
  const q=d.querySelector(".q");
- if(m.reply_to){const r=msgs.get(m.reply_to);q.innerHTML=RBI.svg("reply","xs")+"<span></span>";q.lastChild.textContent=(r?(profiles[r.sender_id]?.callsign||"?")+": "+(r.body===DEL?"[purged]":r.body):"...")}
+ if(m.reply_to){const r=msgs.get(m.reply_to);q.innerHTML=RBI.svg("reply","xs")+"<span></span>";q.lastChild.textContent=(r?(profiles[r.sender_id]?.callsign||"?")+": "+(r.body===DEL?"...":r.body):"...")}
  else q.remove();
  if(q.isConnected)q.onclick=ev=>{ev.stopPropagation();window.jumpToMsg&&jumpToMsg(m.reply_to)};
  const xEl=d.querySelector(".x");
- if(gone){xEl.innerHTML=RBI.svg("ban","sm")+"<span>message purged</span>"}
- else if(pending){
+ if(pending){
   xEl.textContent="";
   if(m.media_type==="image"&&m._local){const img=document.createElement("img");img.src=m._local;xEl.appendChild(img)}
   else if(!m.media_type)xEl.textContent=m.body||"";
@@ -843,8 +848,10 @@ function draw(m){
    const lu=localURL.get(m.id);if(lu)img.src=lu; /* keep our own preview, no blank flash */
    xEl.appendChild(img);mediaUrl(m.media_path).then(u=>{if(u)img.src=u});
   }else{
-   const au=document.createElement("audio");au.controls=true;au.onclick=ev=>ev.stopPropagation();
-   xEl.appendChild(au);mediaUrl(m.media_path).then(u=>{if(u)au.src=u});
+   if(m.media_type==="voice"&&window.RBplayer)xEl.appendChild(RBplayer.make(m,mediaUrl(m.media_path),m.sender_id===me.id));
+   else if(m.media_type==="file"&&window.RBpicker)xEl.appendChild(RBpicker.fileBubble(m));
+   else{const au=document.createElement("audio");au.controls=true;au.onclick=ev=>ev.stopPropagation();
+   xEl.appendChild(au);mediaUrl(m.media_path).then(u=>{if(u)au.src=u});}
   }
   if(m.body){const c=document.createElement("div");c.className="cap";c.textContent=m.body;xEl.appendChild(c)}
  } else xEl.textContent=m.body;
@@ -883,9 +890,8 @@ function openSheet(id){
  const add=(ic,t,f)=>{s.appendChild(RBI.btn(ic,t,()=>{close();f()},{danger:/DELETE|LEAVE/.test(t)}))};
  add("reply","REPLY",()=>{replyTo=id;editing=null;updBars();$("txt").focus()});
  if(m.sender_id===me.id){
-  add("edit","EDIT",()=>{editing=id;replyTo=null;$("txt").value=m.body;updBars();$("txt").focus()});
-  add("trash","DELETE",async()=>{const u={body:DEL,edited_at:new Date().toISOString()};
-   const {error}=await sb.from("messages").update(u).eq("id",id);if(!error){Object.assign(m,u);draw(m)}});
+  if(canEdit(m))add("edit","EDIT",()=>{editing=id;replyTo=null;$("txt").value=m.body;updBars();$("txt").focus()});
+  add("trash","DELETE",async()=>{if(await modal({title:"> delete this message for everyone?",okText:"DELETE"}))unsendMessage(m)});
  }
  add("x","CANCEL",()=>{});
 }
@@ -893,29 +899,46 @@ function updBars(){
  const c=$("ctx"),id=replyTo||editing,m=id&&msgs.get(id);
  if(!m){replyTo=editing=null;c.style.display="none";c.innerHTML="";return}
  const who=editing?"Editing message":"Replying to "+(m.sender_id===me.id?"yourself":(profiles[m.sender_id]?.callsign||"?"));
- const snip=m.body===DEL?"[purged]":m.media_type==="image"?"Photo":m.media_type==="voice"?"Voice note":(m.body||"");
+ const snip=m.media_type==="image"?"Photo":m.media_type==="voice"?"Voice note":m.media_type==="file"?(m.body||"File"):(m.body||"");
  c.style.display="flex";
  c.innerHTML='<div class="cx"><b class="cw"></b><em class="cs"></em></div><button type="button" class="cclose" aria-label="Cancel"></button>';
  c.querySelector(".cw").textContent=who;c.querySelector(".cs").textContent=snip;
  const x=c.querySelector(".cclose");x.innerHTML=RBI.svg("x");
  x.onclick=()=>{if(editing)$("txt").value="";replyTo=editing=null;updBars()};
 }
-$("boomBtn").onclick=async()=>{
- const v=await modal({title:"> boom timer (seconds, 0 = off)",placeholder:"seconds",value:boomSecs||10});
- if(v===null)return;boomSecs=Math.max(0,parseInt(v)||0);$("boomBtn").style.background=boomSecs?"#ffb02066":"";
- toast(boomSecs?"boom timer set: "+boomSecs+"s":"boom timer off");
-};
 function handleCmd(raw){
  const [cmd,...rest]=raw.slice(1).split(" ");const arg=rest.join(" ").trim();
- if(cmd==="boom"){const n=arg==="off"?0:Math.max(0,parseInt(arg)||0);boomSecs=n;$("boomBtn").style.background=n?"#ffb02066":"";toast(n?"boom timer set: "+n+"s":"boom timer off");return}
+ if(cmd==="boom"){if(window.RBboom)RBboom.cmd(arg);return}
  if(cmd==="theme")return setTheme(arg);
  if(cmd==="clear"){$("msgs").innerHTML="";lastDay="";toast("local view cleared");return}
  toast("unknown command: /"+cmd,"err");
+}
+/* ---------- edit window (15 min) + unsend ---------- */
+const EDIT_WINDOW=15*60*1000;
+function canEdit(m){return !!m&&m.sender_id===me.id&&!m.media_type&&!m.media_path&&m.body!==DEL&&!m._pending&&Date.now()-T(m.created_at)<EDIT_WINDOW}
+function collapseOut(el){
+ if(!el||el._going)return;el._going=true;
+ const h=el.offsetHeight;el.style.overflow="hidden";el.style.maxHeight=h+"px";
+ el.style.transition="opacity .22s ease,transform .22s ease";requestAnimationFrame(()=>{el.style.opacity="0";el.style.transform="scale(.94)"});
+ setTimeout(()=>{el.style.transition="max-height .24s cubic-bezier(.3,.8,.3,1),margin .24s,padding .24s,border-width .24s";el.style.maxHeight="0px";el.style.marginTop=el.style.marginBottom=el.style.paddingTop=el.style.paddingBottom="0px";el.style.borderWidth="0px"},200);
+ setTimeout(()=>el.remove(),470);
+}
+function dropMsgLocal(id){const m=msgs.get(id);msgs.delete(id);collapseOut($("m-"+id));persistMsgs();if(window.RBstars&&RBstars.has(id)&&m)RBstars.toggle(m)}
+async function unsendMessage(m){
+ let {error}=await sb.from("messages").delete().eq("id",m.id);
+ if(error){ /* older setup without the delete rule: blank it out instead - it still disappears for everyone */
+  const r=await sb.from("messages").update({body:DEL,edited_at:new Date().toISOString()}).eq("id",m.id);error=r.error;
+ }
+ if(error){toast(error,"err");return false}
+ if(m.media_path){try{sb.storage.from("media").remove([m.media_path]).then(()=>{},()=>{})}catch(e){}}
+ dropMsgLocal(m.id);return true;
 }
 async function send(){
  const body=$("txt").value.trim();if(!body||!room)return;$("txt").value="";
  if(!editing&&body.startsWith("/")){handleCmd(body);return}
  if(editing){const id=editing;editing=null;updBars();
+  const em=msgs.get(id);
+  if(!canEdit(em)){toast("you can only edit a message within 15 minutes","err");return}
   const {error}=await sb.from("messages").update({body,edited_at:new Date().toISOString()}).eq("id",id);
   if(error)toast(error,"err");return}
  const row={id:crypto.randomUUID(),room_id:room,sender_id:me.id,body};
@@ -934,14 +957,16 @@ async function sendMedia(file,type){
  if(!room)return;
  const id=crypto.randomUUID(),rid=room,at=new Date().toISOString();
  const url=type==="image"?URL.createObjectURL(file):null;if(url)localURL.set(id,url);
- const temp={id,room_id:rid,sender_id:me.id,created_at:at,media_type:type,_local:url,_pending:true,_queued:!navigator.onLine};
+ const temp={id,room_id:rid,sender_id:me.id,created_at:at,media_type:type,body:type==="file"?file.name:undefined,_local:url,_pending:true,_queued:!navigator.onLine};
  msgs.set(id,temp);draw(temp); /* shows immediately, before any compressing or uploading */
  try{
   const blob=type==="image"?await compressImage(file):file;
-  const ext=type==="image"?"jpg":(blob.type&&blob.type.includes("mp4")?"m4a":blob.type&&blob.type.includes("aac")?"aac":"webm");
-  const ctype=type==="image"?"image/jpeg":(blob.type||"audio/webm");
+  const fext=type==="file"?((String(file.name||"").split(".").pop()||"bin").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,8)||"bin"):"";
+  const ext=type==="file"?fext:type==="image"?"jpg":(blob.type&&blob.type.includes("mp4")?"m4a":blob.type&&blob.type.includes("aac")?"aac":"webm");
+  const ctype=type==="image"?"image/jpeg":type==="file"?(file.type||"application/octet-stream"):(blob.type||"audio/webm");
   await RBM.put(id,blob);
   const row={id,room_id:rid,sender_id:me.id,media_path:rid+"/"+crypto.randomUUID()+"."+ext,media_type:type};
+  if(type==="file")row.body=file.name;
   if(boomSecs)row.boom_seconds=boomSecs;
   queueItem({id,row,media:true,ctype,at});
   flushOutbox();
@@ -950,12 +975,6 @@ async function sendMedia(file,type){
   toast(err,"err");
  }
 }
-let attLong=false,attT=null;
-$("attBtn").addEventListener("touchstart",()=>{attLong=false;attT=setTimeout(()=>{attLong=true;$("fileIn2").click()},500)});
-$("attBtn").addEventListener("touchend",()=>clearTimeout(attT));
-$("attBtn").addEventListener("touchmove",()=>clearTimeout(attT));
-$("attBtn").onclick=()=>{if(attLong){attLong=false;return}$("fileIn").click()};
-$("attBtn").oncontextmenu=e=>{e.preventDefault();$("fileIn2").click()};
 $("fileIn2").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)sendMedia(f,"voice")};
 $("fileIn").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)sendMedia(f,"image")};
 let micStream=null,micRecording=false;
@@ -1057,7 +1076,7 @@ $("txt").oninput=()=>{if(chan&&Date.now()-lastTypeSent>2500){lastTypeSent=Date.n
 $("msgs").onscroll=()=>{const b=$("msgs"),far=b.scrollHeight-b.scrollTop-b.clientHeight;
  if(far<120){newCount=0;$("tobot").style.display="none"}else if(far>400)showTobot()};
 $("tobot").onclick=()=>$("msgs").scrollTo({top:1e9,behavior:"smooth"});
-$("titleWrap").onclick=()=>{if(roomType==="group")openGroupSheet();else if(otherId&&window.openUserCard)openUserCard(otherId)};
+$("titleWrap").onclick=()=>{if(curView!=="chat")return;if(roomType==="group")openGroupSheet();else if(otherId&&window.openUserCard)openUserCard(otherId)};
 
 /* ---------- admin ---------- */
 async function adminCall(body){const {data,error}=await sb.functions.invoke("admin-users",{body});
@@ -1100,6 +1119,9 @@ start();
 <script src="gestures.js" defer></script>
 <script src="chat.js" defer></script>
 <script src="home.js" defer></script>
+<script src="boom.js" defer></script>
+<script src="player.js" defer></script>
+<script src="picker.js" defer></script>
 <script src="panels.js" defer></script>
 </body>
 </html>

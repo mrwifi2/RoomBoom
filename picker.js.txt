@@ -1,0 +1,132 @@
+/* ===== RoomBoom: own media picker =====
+   - camera button: in-app photo grid (gallery thumbnails + camera tile), multi-select, send
+   - link button: fan of separate icons (no boxes) over a dimmed screen; each opens the phone's own picker for that type
+   Native part: Capacitor plugin RBMedia (falls back to the system image picker if it is missing). */
+(function(){
+ "use strict";
+ const $=id=>document.getElementById(id);
+ const mk=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+ const plug=()=>window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.RBMedia;
+ const buzz=n=>{try{navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
+ const MAXF=25*1024*1024;
+ function b64blob(b64,type){const bin=atob(b64),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:type||"image/jpeg"})}
+ function pickFile(accept,multiple){
+  return new Promise(res=>{
+   const i=document.createElement("input");i.type="file";i.accept=accept;if(multiple)i.multiple=true;i.style.display="none";
+   i.onchange=()=>{const f=[...i.files];i.remove();res(f)};document.body.appendChild(i);i.click();
+  });
+ }
+ function sendFiles(files,type){
+  files.forEach(f=>{
+   if(type==="file"&&f.size>MAXF){toast(f.name+" is bigger than 25 MB","err");return}
+   sendMedia(f,type);
+  });
+ }
+
+ /* ================= photo picker ================= */
+ let ov=null,sel=[],loading=false,offset=0,done=false;
+ function openPhotos(){
+  if(!room||ov)return;
+  if(!plug()){pickFile("image/*",true).then(f=>sendFiles(f,"image"));return}
+  sel=[];offset=0;done=false;
+  ov=mk("div","pkOv");
+  ov.innerHTML='<div class="pkTop"><button class="pkX">'+RBI.svg("back")+'</button><span>PHOTOS</span><button class="pkSend" disabled>SEND</button></div><div class="pkGrid"></div><div class="pkMsg"></div>';
+  document.body.appendChild(ov);requestAnimationFrame(()=>ov.classList.add("on"));
+  const grid=ov.querySelector(".pkGrid"),msg=ov.querySelector(".pkMsg"),sb=ov.querySelector(".pkSend");
+  const close=()=>{if(!ov)return;const o=ov;ov=null;o.classList.remove("on");setTimeout(()=>o.remove(),260)};
+  ov.querySelector(".pkX").onclick=close;
+  window.__pkClose=close;
+  const cam=mk("button","pkCell pkCam",RBI.svg("camera")+"<span>CAMERA</span>");
+  cam.onclick=async()=>{
+   try{const r=await plug().camera();close();sendFiles([b64blob(r.data)],"image")}
+   catch(e){if(String(e&&e.message||e).indexOf("cancel")<0){close();pickFile("image/*").then(f=>sendFiles(f,"image"))}}
+  };
+  grid.appendChild(cam);
+  const upd=()=>{sb.disabled=!sel.length;sb.textContent=sel.length?"SEND ("+sel.length+")":"SEND"};
+  sb.onclick=async()=>{
+   const ids=sel.slice();close();
+   for(const id of ids){try{const r=await plug().get({id});sendFiles([b64blob(r.data)],"image")}catch(e){toast("could not read a photo","err")}}
+  };
+  async function more(){
+   if(loading||done||!ov)return;loading=true;
+   try{
+    const r=await plug().list({limit:60,offset});
+    const items=r.items||[];offset+=60;if(items.length<60)done=true;
+    const frag=document.createDocumentFragment();
+    items.forEach(it=>{
+     const c=mk("button","pkCell");c.style.backgroundImage='url("data:image/jpeg;base64,'+it.thumb+'")';
+     c.innerHTML='<i class="pkTick"></i>';
+     c.onclick=()=>{
+      const k=sel.indexOf(it.id);
+      if(k>=0){sel.splice(k,1);c.classList.remove("sel")}else{if(sel.length>=10){toast("max 10 photos at a time","err");return}sel.push(it.id);c.classList.add("sel");buzz(6)}
+      grid.querySelectorAll(".pkCell.sel").forEach(x=>{const n=sel.indexOf(x._id);x.firstChild.textContent=n>=0?n+1:""});
+      upd();
+     };
+     c._id=it.id;frag.appendChild(c);
+    });
+    grid.appendChild(frag);
+    if(!items.length&&offset<=60)msg.textContent="no photos found";
+   }catch(e){
+    const m=String(e&&e.message||e);
+    if(offset===0){msg.innerHTML="";const b=mk("button","pkAlt","OPEN SYSTEM PICKER");b.onclick=()=>{close();pickFile("image/*",true).then(f=>sendFiles(f,"image"))};
+     msg.textContent=m.indexOf("denied")>=0?"allow photo access to see your gallery here":"gallery not available";msg.appendChild(b)}
+   }
+   loading=false;
+  }
+  grid.addEventListener("scroll",()=>{if(grid.scrollTop+grid.clientHeight>grid.scrollHeight-500)more()},{passive:true});
+  more();
+ }
+ /* system back closes the picker / attach fan first */
+ window.addEventListener("popstate",()=>{});
+
+ /* ================= attach fan ================= */
+ const OPTS=[
+  ["DOCUMENT","file","#7c8cff",()=>pickFile("application/pdf,application/msword,application/vnd.*,text/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar").then(f=>sendFiles(f,"file"))],
+  ["VIDEO","film","#ff5fa2",()=>pickFile("video/*").then(f=>sendFiles(f,"file"))],
+  ["AUDIO","music","#ffb020",()=>pickFile("audio/*").then(f=>sendFiles(f,"file"))],
+  ["ANY FILE","archive","#00e5ff",()=>pickFile("*/*").then(f=>sendFiles(f,"file"))]
+ ];
+ let fan=null;
+ function openFan(){
+  if(fan)return closeFan();
+  fan=mk("div","fanOv");
+  const items=OPTS.map(([t,ic,col,fn],i)=>{
+   const b=mk("button","fanIt",'<span class="fanIc" style="color:'+col+'">'+RBI.svg(ic)+'</span><span class="fanLb">'+t+'</span>');
+   b.style.transitionDelay=(i*45)+"ms";
+   b.onclick=e=>{e.stopPropagation();buzz(8);closeFan();setTimeout(fn,120)};
+   fan.appendChild(b);return b;
+  });
+  fan.onclick=closeFan;
+  document.body.appendChild(fan);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{fan.classList.add("on");$("linkBtn").classList.add("open")}));
+ }
+ function closeFan(){
+  if(!fan)return;const f=fan;fan=null;f.classList.remove("on");$("linkBtn").classList.remove("open");
+  f.querySelectorAll(".fanIt").forEach((b,i)=>b.style.transitionDelay=((3-i)*30)+"ms");
+  setTimeout(()=>f.remove(),300);
+ }
+
+ /* ================= file bubble ================= */
+ const extOf=p=>(String(p||"").split(".").pop()||"").toLowerCase();
+ const AUD=["mp3","m4a","aac","wav","ogg","opus","flac","amr","webm"],VID=["mp4","mkv","mov","3gp","avi"];
+ function fileBubble(m){
+  const ext=extOf(m.media_path);
+  if(AUD.indexOf(ext)>=0&&window.RBplayer)return RBplayer.make(m,mediaUrl(m.media_path),m.sender_id===me.id);
+  const el=mk("div","fb");
+  const ic=VID.indexOf(ext)>=0?"film":"file";
+  el.innerHTML='<span class="fbI">'+RBI.svg(ic)+'</span><span class="fbT"><b></b><small></small></span><span class="fbD">'+RBI.svg("download")+'</span>';
+  el.querySelector("b").textContent=m.body||("file."+ext);el.querySelector("small").textContent=ext.toUpperCase()+(VID.indexOf(ext)>=0?" · tap to play":" · tap to open");
+  el.onclick=async ev=>{
+   ev.stopPropagation();
+   const u=await mediaUrl(m.media_path);if(!u){toast("file unavailable","err");return}
+   if(VID.indexOf(ext)>=0){
+    const v=mk("div","vOv");const vid=document.createElement("video");vid.src=u;vid.controls=true;vid.autoplay=true;vid.playsInline=true;
+    v.appendChild(vid);v.onclick=e=>{if(e.target===v){vid.pause();v.remove()}};document.body.appendChild(v);return;
+   }
+   const a=document.createElement("a");a.href=u;a.download=m.body||("file."+ext);a.target="_blank";document.body.appendChild(a);a.click();a.remove();
+  };
+  return el;
+ }
+ window.RBpicker={openPhotos,openFan,closeFan,fileBubble,isOpen:()=>!!(ov||fan),closeAll:()=>{if(ov&&window.__pkClose)window.__pkClose();closeFan()}};
+ $("camBtn").onclick=openPhotos;$("linkBtn").onclick=openFan;
+})();

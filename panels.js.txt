@@ -113,11 +113,17 @@
  function cmdsPage(b){
   const c=(cmd,txt)=>{const d=mk("div","cmd","<code></code><p></p>");d.querySelector("code").textContent=cmd;d.querySelector("p").textContent=txt;b.appendChild(d)};
   b.appendChild(mk("div","spSec","> TYPE THESE IN ANY CHAT"));
-  c("/boom 10","every message you send self-destructs 10 seconds after it is sent. any number of seconds works.");
-  c("/boom off","turn the self-destruct timer off.");
+  c("/boom 10","turns boom mode on: every message you send self-destructs 10 seconds after sending. any number of seconds works.");
+  c("/boom off","turn boom mode off.");
   c("/theme green","change the colour theme. options: green, blue, red, amber.");
   c("/clear","clears the messages on your screen only. nothing is deleted for anyone.");
+  b.appendChild(mk("div","spSec","> MESSAGE RULES"));
+  c("edit window","you can edit your own message only within 15 minutes of sending it. after that the edit option disappears.");
+  c("edits are silent","editing a message sends no notification to anyone. they just see the new text with an 'edited' mark.");
+  c("delete = unsend","deleting your message removes it for everyone, completely. no 'message purged' placeholder is left behind.");
+  c("notifications","notifications never show message text. they only say '@username sent a message'.");
   b.appendChild(mk("div","spSec","> GESTURES"));
+  c("swipe up at chat bottom","from the very end of a chat, swipe up to turn boom mode on. do it again to turn it off. set the timer in menu > boom timer.");
   c("hold a message","reactions, reply, copy, star, edit, delete.");
   c("swipe a message","reply. incoming: left to right, your own: right to left.");
   c("drag chat left","slide the timestamps in from the right edge.");
@@ -339,7 +345,7 @@
  (function(){
   const dr=$("drawer"),anchor=$("drawerAdmin");
   dr.insertBefore(mk("div","dsec","&gt; TOOLS"),anchor);
-  [["star","STARRED MESSAGES",starsPage],["archive","ARCHIVED CHATS",archPage],["terminal","TERMINAL COMMANDS",cmdsPage],
+  [["star","STARRED MESSAGES",starsPage],["bomb","BOOM TIMER",(b)=>window.RBboom&&RBboom.page(b)],["archive","ARCHIVED CHATS",archPage],["terminal","TERMINAL COMMANDS",cmdsPage],
    ["database","STORAGE & CACHE",storagePage],["pulse","DIAGNOSTICS",diagPage],["info","ABOUT & HELP",aboutPage]].forEach(([ic,t,fn])=>{
     const b=mk("button","dtool",RBI.label(ic,t));
     b.onclick=()=>openPage(t,fn);

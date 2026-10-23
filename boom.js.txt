@@ -1,0 +1,147 @@
+/* ===== RoomBoom: boom mode (self-destructing messages) =====
+   - turn it on / off by swiping UP at the very bottom of a chat (like Instagram's vanish mode)
+   - the timer length is chosen in  menu > BOOM TIMER  (presets + a custom value typed on an in-app number pad)
+   Loaded with `defer` after the main script. Uses: $, boomSecs (main script variable), room, curView, toast, RBI, subPage. */
+(function(){
+ "use strict";
+ const KEY="rb_boom_secs",MAXS=86400;
+ const PRESETS=[[5,"5s"],[10,"10s"],[60,"1m"],[120,"2m"],[300,"5m"],[600,"10m"],[900,"15m"]];
+ const lab=s=>s<60?s+"s":s%3600===0?(s/3600)+"h":s%60===0?(s/60)+"m":Math.floor(s/60)+"m "+(s%60)+"s";
+ const mk=(tag,cls,html)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e};
+ const buzz=ms=>{try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}};
+ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+ let secs=10,on=false,customSecs=0;
+ try{const v=parseInt(localStorage.getItem(KEY));if(v>=1&&v<=MAXS)secs=v;const c=parseInt(localStorage.getItem(KEY+"_custom"));if(c>=1&&c<=MAXS)customSecs=c}catch(e){}
+ const isPreset=s=>PRESETS.some(p=>p[0]===s);
+ if(!isPreset(secs)&&!customSecs)customSecs=secs;
+
+ const view=$("v-chat"),box=$("msgs"),wrap=$("wrap");
+ /* "boom mode" strip above the message bar + the pull pill that shows while you swipe */
+ const tag=mk("div",null,'<span class="bti"></span><span class="btt"></span>');tag.id="boomTag";
+ tag.firstChild.innerHTML=RBI.svg("bomb");
+ view.insertBefore(tag,$("ctx"));
+ const pill=mk("div",null,'<span class="bpi"></span><span class="bpt"></span>');pill.id="boomPull";
+ pill.firstChild.innerHTML=RBI.svg("bomb");wrap.appendChild(pill);
+ tag.onclick=()=>{if(window.subPage)subPage.open("BOOM TIMER",page)};
+
+ function paint(){
+  boomSecs=on?secs:0; /* the main script reads this when it sends */
+  view.classList.toggle("boomOn",on);
+  tag.querySelector(".btt").textContent="BOOM MODE · messages vanish "+lab(secs)+" after sending";
+  tag.classList.toggle("on",on);
+ }
+ function setOn(v,silent){
+  v=!!v&&typeof room!=="undefined"&&!!room&&curView==="chat";
+  if(v===on){paint();return}
+  on=v;paint();
+  if(!silent){buzz(on?[18,40,18]:14);flash(on?"BOOM MODE ON · "+lab(secs):"BOOM MODE OFF",on)}
+ }
+ let flT=null;
+ function flash(text,hot){
+  clearTimeout(flT);pill.classList.remove("pulling","hit");pill.classList.add("note");pill.classList.toggle("hot",!!hot);
+  pill.querySelector(".bpt").textContent=text;pill.style.transform="";pill.style.opacity="";
+  flT=setTimeout(()=>pill.classList.remove("note","hot"),1100);
+ }
+ function setSecs(s){
+  secs=clamp(Math.round(s),1,MAXS);
+  try{localStorage.setItem(KEY,String(secs))}catch(e){}
+  if(!isPreset(secs)){customSecs=secs;try{localStorage.setItem(KEY+"_custom",String(secs))}catch(e){}}
+  paint();
+ }
+ function cmd(arg){
+  if(arg==="off"){setOn(false);return}
+  const n=parseInt(arg);
+  if(n>=1&&n<=MAXS){setSecs(n);setOn(true);return}
+  if(!arg){setOn(!on);return}
+  toast("use /boom 10  or  /boom off","err");
+ }
+ window.RBboom={get secs(){return secs},get on(){return on},setOn,setSecs,toggle:()=>setOn(!on),cmd,page,label:lab};
+
+ /* a chat opens with boom mode off; leaving a chat turns it off */
+ const _or=window.openRoom;
+ if(typeof _or==="function")window.openRoom=function(){setOn(false,true);return _or.apply(this,arguments)};
+ new MutationObserver(()=>{if($("app").dataset.v!=="chat")setOn(false,true)}).observe($("app"),{attributes:true,attributeFilter:["data-v"]});
+
+ /* ---------- swipe up at the very bottom of a chat ---------- */
+ const NEED=118; /* finger travel (px) needed to flip the mode */
+ let g=null;
+ const rub=u=>u<=NEED?u*.55:NEED*.55+(u-NEED)*.15;
+ box.addEventListener("touchstart",e=>{
+  g=null;
+  if(e.touches.length!==1||curView!=="chat")return;
+  if(box.scrollHeight-box.scrollTop-box.clientHeight>3)return; /* only from the very end of the chat */
+  const t=e.touches[0];g={x:t.clientX,y:t.clientY,top:box.scrollTop,mode:0,u:0,hit:false};
+ },{passive:true});
+ box.addEventListener("touchmove",e=>{
+  if(!g||!e.touches[0])return;
+  const t=e.touches[0],dx=t.clientX-g.x,dy=t.clientY-g.y;
+  if(g.mode===0){
+   if(Math.abs(dx)<9&&Math.abs(dy)<9)return;
+   if(dy>=0||Math.abs(dy)<Math.abs(dx)*1.3||box.scrollTop<g.top-1){g=null;return}
+   g.mode=1;clearTimeout(flT);pill.classList.remove("note","hot");pill.classList.add("pulling");
+   box.style.transition="none";box.style.willChange="transform";pill.style.transition="none";
+  }
+  g.u=-dy;const r=rub(g.u),p=clamp(r/(NEED*.55),0,1);
+  pill.style.opacity=String(clamp(p*1.4,0,1));
+  pill.style.transform="translate3d(-50%,"+(-r*.9)+"px,0) scale("+(.82+.18*p)+")";
+  box.style.transform="translate3d(0,"+(-r*.28)+"px,0)";
+  const hit=g.u>=NEED;
+  pill.querySelector(".bpt").textContent=hit?(on?"RELEASE · BOOM OFF":"RELEASE · BOOM ON"):(on?"SWIPE UP · BOOM OFF":"SWIPE UP · BOOM ON");
+  if(hit!==g.hit){g.hit=hit;pill.classList.toggle("hit",hit);if(hit)buzz(10)}
+ },{passive:true});
+ function end(ev){
+  if(!g)return;const s=g;g=null;if(s.mode!==1)return;
+  const commit=ev&&ev.type==="touchend"&&s.hit;
+  box.style.transition="transform .32s cubic-bezier(.2,.9,.3,1.1)";box.style.transform="";
+  pill.style.transition="transform .26s cubic-bezier(.3,.8,.3,1),opacity .2s";pill.style.transform="";pill.style.opacity="";
+  pill.classList.remove("pulling","hit");
+  setTimeout(()=>{box.style.transition=box.style.willChange="";pill.style.transition=""},340);
+  if(commit)setOn(!on);
+ }
+ box.addEventListener("touchend",end,{passive:true});box.addEventListener("touchcancel",()=>end(null),{passive:true});
+
+ /* ---------- menu > BOOM TIMER (presets + custom, typed on an in-app number pad) ---------- */
+ function page(b){
+  b.appendChild(mk("div","spSec","&gt; SELF-DESTRUCT TIMER"));
+  const info=mk("div","bpInfo","");
+  info.innerHTML='<span class="i">'+RBI.svg("bomb")+'</span><p>Messages you send in <b>boom mode</b> disappear this long after they are sent.<br><br>Turn boom mode on or off by <b>swiping up at the very bottom of any chat</b>.</p>';
+  b.appendChild(info);
+  const cur=mk("div","bpCur","");b.appendChild(cur);
+  const grid=mk("div","bpGrid","");b.appendChild(grid);
+  const padBox=mk("div","bpPadBox","");b.appendChild(padBox);
+  let padOpen=false,digits="",unit=1;
+  function chips(){
+   grid.innerHTML="";cur.innerHTML="current: <b>"+lab(secs)+"</b>";
+   PRESETS.forEach(([s,t])=>{const c=mk("button","bpChip"+(secs===s&&!padOpen?" sel":""),"");c.textContent=t;c.onclick=()=>{padOpen=false;setSecs(s);buzz(8);chips();drawPad()};grid.appendChild(c)});
+   const cc=mk("button","bpChip custom"+((padOpen||(!isPreset(secs)))?" sel":""),"");
+   cc.textContent=(!isPreset(secs)&&!padOpen)?"CUSTOM · "+lab(secs):"CUSTOM";
+   cc.onclick=()=>{padOpen=!padOpen;digits="";buzz(8);chips();drawPad()};grid.appendChild(cc);
+  }
+  function disp(){
+   const n=digits===""?"0":digits;
+   return '<span class="bpN">'+n+'</span><span class="bpU">'+(unit===1?"sec":unit===60?"min":"hr")+"</span>";
+  }
+  function drawPad(){
+   padBox.classList.toggle("open",padOpen);
+   if(!padOpen){padBox.innerHTML="";return}
+   padBox.innerHTML="";
+   const d=mk("div","bpDisp",disp());padBox.appendChild(d);
+   const seg=mk("div","bpSeg","");
+   [[1,"SEC"],[60,"MIN"],[3600,"HR"]].forEach(([u,t])=>{const s=mk("button",unit===u?"sel":"","");s.textContent=t;s.onclick=()=>{unit=u;buzz(6);seg.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));s.classList.add("sel");d.innerHTML=disp()};seg.appendChild(s)});
+   padBox.appendChild(seg);
+   const pad=mk("div","bpPad","");
+   const key=(t,fn,cls)=>{const k=mk("button","bpKey"+(cls?" "+cls:""),"");if(t==="del")k.innerHTML=RBI.svg("back");else k.textContent=t;k.onclick=()=>{buzz(5);fn()};pad.appendChild(k)};
+   for(let i=1;i<=9;i++)key(String(i),()=>{if(digits.length<5){digits+=String(i);d.innerHTML=disp()}});
+   key("del",()=>{digits=digits.slice(0,-1);d.innerHTML=disp()},"fn");
+   key("0",()=>{if(digits!==""&&digits.length<5){digits+="0";d.innerHTML=disp()}});
+   key("SET",()=>{
+    const v=(parseInt(digits)||0)*unit;
+    if(v<1||v>MAXS){d.classList.remove("shake");void d.offsetWidth;d.classList.add("shake");toast("pick between 1 second and 24 hours","err");return}
+    setSecs(v);padOpen=false;chips();drawPad();toast("boom timer: "+lab(v));
+   },"ok");
+   padBox.appendChild(pad);
+  }
+  chips();drawPad();
+ }
+ paint();
+})();

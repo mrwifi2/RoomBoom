@@ -1,0 +1,37 @@
+/* ===== photo picker, attach fan, file bubble ===== */
+.pkOv{position:fixed;inset:0;z-index:70;background:var(--bg);display:flex;flex-direction:column;transform:translate3d(0,100%,0);transition:transform .28s cubic-bezier(.2,.9,.3,1)}
+.pkOv.on{transform:none}
+.pkTop{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 10px 10px;color:var(--tx);letter-spacing:1.5px;font-size:13px}
+.pkTop span{flex:1}
+.pkX{width:38px;height:38px;border:0;background:none;color:var(--tx);display:flex;align-items:center;justify-content:center}
+.pkSend{border:0;border-radius:18px;padding:9px 16px;background:var(--g);color:#0a0a0b;font:inherit;font-size:12px;letter-spacing:1px;font-weight:700;transition:opacity .2s,transform .12s}
+.pkSend:disabled{opacity:.3}.pkSend:active:not(:disabled){transform:scale(.95)}
+.pkGrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:2px;align-content:start;-webkit-overflow-scrolling:touch;contain:strict}
+.pkCell{position:relative;aspect-ratio:1;border:0;padding:0;background:var(--panel2) center/cover no-repeat;transition:transform .15s,filter .15s}
+.pkCell:active{filter:brightness(.8)}
+.pkCell.sel{transform:scale(.9);border-radius:6px}
+.pkTick{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;
+ font-style:normal;font-size:11px;font-weight:700;color:#0a0a0b;transition:background .15s,border-color .15s}
+.pkCell.sel .pkTick{background:var(--g);border-color:var(--g)}
+.pkCam{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--g);font:inherit;font-size:10px;letter-spacing:1px}
+.pkCam .i{width:28px;height:28px}
+.pkMsg{position:absolute;left:0;right:0;top:46%;text-align:center;color:var(--dim);font-size:12px;padding:0 30px}
+.pkAlt{display:block;margin:14px auto 0;border:1px solid var(--g);background:none;color:var(--g);border-radius:18px;padding:9px 16px;font:inherit;font-size:11px;letter-spacing:1px}
+/* attach fan: separate icons, no boxes, dimmed screen */
+.fanOv{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0);transition:background .26s;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;
+ gap:18px;padding:0 0 calc(76px + env(safe-area-inset-bottom)) 16px}
+.fanOv.on{background:rgba(0,0,0,.62)}
+.fanIt{display:flex;align-items:center;gap:14px;border:0;background:none;padding:0;color:var(--tx);font:inherit;opacity:0;transform:translate3d(-8px,40px,0) scale(.4);transform-origin:left bottom;
+ transition:transform .32s cubic-bezier(.2,1.2,.3,1),opacity .2s}
+.fanOv.on .fanIt{opacity:1;transform:none}
+.fanIc{display:flex;align-items:center;justify-content:center;width:46px;height:46px;filter:drop-shadow(0 0 8px currentColor)}
+.fanIc .i{width:34px;height:34px;stroke-width:1.6}
+.fanLb{font-size:12px;letter-spacing:1.5px;text-shadow:0 1px 6px #000}
+.fanIt:active .fanIc{transform:scale(.88)}
+#linkBtn .i{transition:transform .28s cubic-bezier(.2,1.2,.3,1)}
+#linkBtn.open .i{transform:rotate(-45deg) scale(1.1);color:var(--g)}
+.fb{display:flex;align-items:center;gap:11px;min-width:200px;max-width:250px;padding:4px 0}
+.fbI{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;color:var(--c);flex:none}
+.fbT{flex:1;min-width:0;display:flex;flex-direction:column}.fbT b{font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fbT small{color:var(--dim);font-size:10px;letter-spacing:.5px}
+.fbD{color:var(--dim)}.fbD .i{width:18px;height:18px}
+.vOv{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center}.vOv video{max-width:100%;max-height:100%}
