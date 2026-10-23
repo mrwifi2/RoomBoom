@@ -20,8 +20,8 @@ jobs:
           set -x
           mkdir -p www
           cp roomboom-ui.html www/index.html
-          cp nav.css ui.css chat.css home.css panels.css www/
-          for f in nav icons offline gestures chat home panels; do
+          cp nav.css ui.css chat.css home.css panels.css boom.css player.css picker.css www/
+          for f in nav icons offline gestures chat home boom player picker panels; do
             if [ -f "$f.js.txt" ]; then cp "$f.js.txt" "www/$f.js"; elif [ -f "$f.js" ]; then cp "$f.js" "www/$f.js"; else echo "missing $f.js"; exit 1; fi
           done
           cp node_modules/@supabase/supabase-js/dist/umd/supabase.js www/supabase.js || echo "local supabase copy skipped (CDN fallback will be used)"
@@ -47,10 +47,13 @@ jobs:
           open(p, "w").write(s)
           ' || echo "theme patch skipped, continuing"
           MAINACT=android/app/src/main/java/com/roomboom/app/MainActivity.java
-          echo "cGFja2FnZSBjb20ucm9vbWJvb20uYXBwOwoKaW1wb3J0IGFuZHJvaWQuTWFuaWZlc3Q7CmltcG9ydCBhbmRyb2lkLmNvbnRlbnQucG0uUGFja2FnZU1hbmFnZXI7CmltcG9ydCBhbmRyb2lkLm9zLkJ1bmRsZTsKaW1wb3J0IGFuZHJvaWQud2Via2l0LlBlcm1pc3Npb25SZXF1ZXN0OwppbXBvcnQgYW5kcm9pZHguYW5ub3RhdGlvbi5Ob25OdWxsOwppbXBvcnQgYW5kcm9pZHguY29yZS5hcHAuQWN0aXZpdHlDb21wYXQ7CmltcG9ydCBjb20uZ2V0Y2FwYWNpdG9yLkJyaWRnZUFjdGl2aXR5OwppbXBvcnQgY29tLmdldGNhcGFjaXRvci5CcmlkZ2VXZWJDaHJvbWVDbGllbnQ7CgpwdWJsaWMgY2xhc3MgTWFpbkFjdGl2aXR5IGV4dGVuZHMgQnJpZGdlQWN0aXZpdHkgewogIHByaXZhdGUgc3RhdGljIGZpbmFsIGludCBSRVFfTUlDID0gNjU0MTsKICBwcml2YXRlIFBlcm1pc3Npb25SZXF1ZXN0IHBlbmRpbmdSZXF1ZXN0OwoKICBAT3ZlcnJpZGUKICBwdWJsaWMgdm9pZCBvbkNyZWF0ZShCdW5kbGUgc2F2ZWRJbnN0YW5jZVN0YXRlKSB7CiAgICBzdXBlci5vbkNyZWF0ZShzYXZlZEluc3RhbmNlU3RhdGUpOwogICAgaWYgKEFjdGl2aXR5Q29tcGF0LmNoZWNrU2VsZlBlcm1pc3Npb24odGhpcywgTWFuaWZlc3QucGVybWlzc2lvbi5SRUNPUkRfQVVESU8pICE9IFBhY2thZ2VNYW5hZ2VyLlBFUk1JU1NJT05fR1JBTlRFRCkgewogICAgICBBY3Rpdml0eUNvbXBhdC5yZXF1ZXN0UGVybWlzc2lvbnModGhpcywgbmV3IFN0cmluZ1tde01hbmlmZXN0LnBlcm1pc3Npb24uUkVDT1JEX0FVRElPfSwgUkVRX01JQyk7CiAgICB9CiAgICBnZXRCcmlkZ2UoKS5nZXRXZWJWaWV3KCkuc2V0V2ViQ2hyb21lQ2xpZW50KG5ldyBCcmlkZ2VXZWJDaHJvbWVDbGllbnQoZ2V0QnJpZGdlKCkpIHsKICAgICAgQE92ZXJyaWRlCiAgICAgIHB1YmxpYyB2b2lkIG9uUGVybWlzc2lvblJlcXVlc3QoZmluYWwgUGVybWlzc2lvblJlcXVlc3QgcmVxdWVzdCkgewogICAgICAgIHJ1bk9uVWlUaHJlYWQoKCkgLT4gewogICAgICAgICAgaWYgKEFjdGl2aXR5Q29tcGF0LmNoZWNrU2VsZlBlcm1pc3Npb24oTWFpbkFjdGl2aXR5LnRoaXMsIE1hbmlmZXN0LnBlcm1pc3Npb24uUkVDT1JEX0FVRElPKSA9PSBQYWNrYWdlTWFuYWdlci5QRVJNSVNTSU9OX0dSQU5URUQpIHsKICAgICAgICAgICAgcmVxdWVzdC5ncmFudChyZXF1ZXN0LmdldFJlc291cmNlcygpKTsKICAgICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgIHBlbmRpbmdSZXF1ZXN0ID0gcmVxdWVzdDsKICAgICAgICAgICAgQWN0aXZpdHlDb21wYXQucmVxdWVzdFBlcm1pc3Npb25zKE1haW5BY3Rpdml0eS50aGlzLCBuZXcgU3RyaW5nW117TWFuaWZlc3QucGVybWlzc2lvbi5SRUNPUkRfQVVESU99LCBSRVFfTUlDKTsKICAgICAgICAgIH0KICAgICAgICB9KTsKICAgICAgfQogICAgfSk7CiAgfQoKICBAT3ZlcnJpZGUKICBwdWJsaWMgdm9pZCBvblJlcXVlc3RQZXJtaXNzaW9uc1Jlc3VsdChpbnQgcmVxdWVzdENvZGUsIEBOb25OdWxsIFN0cmluZ1tdIHBlcm1pc3Npb25zLCBATm9uTnVsbCBpbnRbXSBncmFudFJlc3VsdHMpIHsKICAgIHN1cGVyLm9uUmVxdWVzdFBlcm1pc3Npb25zUmVzdWx0KHJlcXVlc3RDb2RlLCBwZXJtaXNzaW9ucywgZ3JhbnRSZXN1bHRzKTsKICAgIGlmIChyZXF1ZXN0Q29kZSA9PSBSRVFfTUlDICYmIHBlbmRpbmdSZXF1ZXN0ICE9IG51bGwpIHsKICAgICAgaWYgKGdyYW50UmVzdWx0cy5sZW5ndGggPiAwICYmIGdyYW50UmVzdWx0c1swXSA9PSBQYWNrYWdlTWFuYWdlci5QRVJNSVNTSU9OX0dSQU5URUQpIHsKICAgICAgICBwZW5kaW5nUmVxdWVzdC5ncmFudChwZW5kaW5nUmVxdWVzdC5nZXRSZXNvdXJjZXMoKSk7CiAgICAgIH0gZWxzZSB7CiAgICAgICAgcGVuZGluZ1JlcXVlc3QuZGVueSgpOwogICAgICB9CiAgICAgIHBlbmRpbmdSZXF1ZXN0ID0gbnVsbDsKICAgIH0KICB9Cn0K" | base64 -d > $MAINACT
+          cp MainActivity.java.txt "$MAINACT"
+          cp RBMediaPlugin.java.txt android/app/src/main/java/com/roomboom/app/RBMediaPlugin.java
+          sed -i '/<uses-permission android:name="android.permission.INTERNET" \/>/a\    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" \/>' android/app/src/main/AndroidManifest.xml
           npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: roomboom-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          
