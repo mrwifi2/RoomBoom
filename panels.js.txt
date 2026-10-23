@@ -351,6 +351,13 @@
     b.onclick=()=>openPage(t,fn);
     dr.insertBefore(b,anchor);
    });
+  /* MyTerminal: for everyone, but only in the real app (it needs the native part) */
+  const tb=mk("button","dtool",RBI.label("terminal","MyTerminal"));tb.id="drawerTerm";
+  tb.style.display=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.RBTerm)?"":"none";
+  tb.onclick=async()=>{
+   try{await Capacitor.Plugins.RBTerm.open()}catch(e){toast("terminal is not available in this build","err")}
+  };
+  dr.insertBefore(tb,anchor);
  })();
 
  /* ============================================================ profile panel extras */
