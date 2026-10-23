@@ -1,0 +1,40 @@
+/* ===== display settings: page styles + the effects of each setting ===== */
+.dsPrev{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:14px;background:var(--bg);border:1px solid var(--line);margin:6px 0 4px}
+.dsPrev .m{animation:none!important;max-width:78%}
+.dsSeg{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 4px}
+.dsSeg button{flex:1;min-width:0;padding:11px 8px;border:none;border-radius:11px;background:var(--panel2);color:var(--dim);font:inherit;font-size:11px;letter-spacing:.8px;transition:background .2s,color .2s,transform .12s}
+.dsSeg button:active{transform:scale(.95)}
+.dsSeg button.sel{background:rgba(255,255,255,.1);color:var(--g);box-shadow:inset 0 0 0 1px var(--g)}
+.dsSwatches{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.dsDot{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 4px;border:none;border-radius:12px;background:var(--panel2);color:var(--dim);font:inherit;font-size:9px;letter-spacing:.7px;transition:transform .12s,box-shadow .2s}
+.dsDot i{width:26px;height:26px;border-radius:50%;display:block}
+.dsDot:active{transform:scale(.94)}
+.dsDot.sel{box-shadow:inset 0 0 0 1px var(--g);color:var(--tx)}
+.dsRange{display:flex;align-items:center;gap:10px;padding:8px 4px}
+.dsRange .a{font-size:11px;color:var(--dim)}.dsRange .A{font-size:20px;color:var(--dim)}
+.dsRange b{min-width:26px;text-align:right;color:var(--g)}
+.dsRange input{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:var(--panel2);outline:none;border:none;padding:0}
+.dsRange input::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--g);box-shadow:0 0 10px var(--g)}
+.dsRow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;background:var(--panel);border-radius:14px;padding:13px 14px;margin:6px 0 4px;color:var(--tx)}
+.dsRow .lb{flex:1}.dsRow b{font-weight:500;font-size:13.5px;display:block}.dsRow small{color:var(--dim);font-size:11px}
+.dsSw{width:44px;height:26px;border-radius:13px;background:var(--panel2);position:relative;flex:none;transition:background .22s}
+.dsSw:after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:var(--dim);transition:transform .22s cubic-bezier(.2,.9,.3,1.2),background .22s}
+.dsSw.on{background:rgba(255,255,255,.12)}.dsSw.on:after{transform:translateX(18px);background:var(--g);box-shadow:0 0 8px var(--g)}
+.dsReset{display:block;width:100%;margin:26px 0 10px;padding:13px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--dim);font:inherit;font-size:12px;letter-spacing:1px}
+.dsReset:active{background:rgba(255,255,255,.06)}
+
+/* --- effects --- */
+html.fSans *{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html.fSans code,html.fSans .gCmd>code,html.fSans .gEx code{font-family:ui-monospace,Menlo,Consolas,monospace}
+html[data-mfs] #msgs .m,html[data-mfs] .dsPrev .m{font-size:var(--mfs)}
+html[data-mr] .m{border-radius:var(--mr) var(--mr) var(--mr) 3px}
+html[data-mr] .m.me{border-radius:var(--mr) var(--mr) 3px var(--mr)}
+html[data-dn] .item.row{padding-top:var(--dn);padding-bottom:var(--dn)}
+html[data-gl="off"] *{text-shadow:none!important}
+html[data-gl="high"] .glow,html[data-gl="high"] .gl{text-shadow:0 0 12px var(--g)}
+html.noRain #rain{display:none!important}
+html.rm .m,html.rm #boomPull{animation:none!important}
+html.rm #v-chat.boomOn #wrap:after{animation:none}
+html.rm #rain{display:none!important}
+html.nm *,html.nm *:before,html.nm *:after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important;transition-delay:0s!important}
+html.nm #rain{display:none!important}

@@ -1,0 +1,126 @@
+/* ===== RoomBoom: DISPLAY SETTINGS (menu > Display settings) =====
+   Everything is stored on this phone (localStorage "rb_display") and applied at once.
+   Exposes RBdisplay.page(body) for the sub-page system and RBdisplay.apply(). */
+(function(){
+ "use strict";
+ const KEY="rb_display",root=document.documentElement;
+ const DEF={bg:"dark",font:"mono",mfs:14,radius:"round",density:"normal",glow:"normal",motion:"full",rain:true,hour:"auto",haptics:true};
+ let S=Object.assign({},DEF);
+ try{const j=JSON.parse(localStorage.getItem(KEY)||"null");if(j&&typeof j==="object")Object.keys(DEF).forEach(k=>{if(k in j&&typeof j[k]===typeof DEF[k])S[k]=j[k]})}catch(e){}
+ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+ const mk=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+ const BG={dark:["#0a0a0b","#131316","#1a1a1e"],black:["#000000","#0a0a0b","#141416"],graphite:["#141416","#1d1d21","#27272c"],midnight:["#070b14","#0e1422","#17203a"]};
+ const RAD={sharp:"2px",round:"",pill:"20px"};
+ const DENS={compact:"6px",normal:"",roomy:"16px"};
+
+ /* ---- global tweaks that are not CSS ---- */
+ const _tl=Date.prototype.toLocaleTimeString;
+ Date.prototype.toLocaleTimeString=function(l,o){
+  if(S.hour!=="auto")o=Object.assign({},o||{},{hour12:S.hour==="12"});
+  return _tl.call(this,l,o);
+ };
+ try{
+  const _v=navigator.vibrate&&navigator.vibrate.bind(navigator);
+  if(_v)navigator.vibrate=p=>S.haptics?_v(p):false;
+ }catch(e){}
+
+ function apply(){
+  const st=root.style,b=BG[S.bg]||BG.dark;
+  st.setProperty("--bg",b[0]);st.setProperty("--panel",b[1]);st.setProperty("--panel2",b[2]);
+  root.classList.toggle("fSans",S.font==="sans");
+  if(S.mfs!==14){root.setAttribute("data-mfs","1");st.setProperty("--mfs",S.mfs+"px")}else{root.removeAttribute("data-mfs");st.removeProperty("--mfs")}
+  if(RAD[S.radius]){root.setAttribute("data-mr","1");st.setProperty("--mr",RAD[S.radius])}else{root.removeAttribute("data-mr");st.removeProperty("--mr")}
+  if(DENS[S.density]){root.setAttribute("data-dn","1");st.setProperty("--dn",DENS[S.density])}else{root.removeAttribute("data-dn");st.removeProperty("--dn")}
+  root.setAttribute("data-gl",S.glow);
+  root.classList.toggle("rm",S.motion==="reduced");root.classList.toggle("nm",S.motion==="off");
+  root.classList.toggle("noRain",!S.rain);
+ }
+ apply();
+ function set(k,v,redraw){
+  S[k]=v;save();apply();
+  if(redraw){try{if(typeof room!=="undefined"&&room&&typeof paintAll==="function")paintAll();if(typeof refreshRoomsLocal==="function")refreshRoomsLocal()}catch(e){}}
+ }
+
+ /* ---- the page ---- */
+ function page(b){
+  const live=()=>{
+   const pv=b.querySelector(".dsPrev");if(!pv)return;
+   pv.querySelectorAll(".m").forEach(x=>{});
+  };
+  /* preview */
+  const pv=mk("div","dsPrev",
+   '<div class="m"><div class="n">Trinity &gt;</div><div class="x">wake up, Neo...</div><span class="t"></span></div>'+
+   '<div class="m me"><div class="n">Neo &gt;</div><div class="x">who is this?</div><span class="t"></span></div>');
+  const tm=()=>pv.querySelectorAll(".t").forEach((t,i)=>{t.textContent=new Date(Date.now()-i*60000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})});
+  tm();b.appendChild(pv);
+
+  const sec=t=>b.appendChild(mk("div","spSec","> "+t));
+  const seg=(opts,cur,fn)=>{
+   const w=mk("div","dsSeg");
+   opts.forEach(([v,t])=>{const x=mk("button",String(cur())===String(v)?"sel":"");x.textContent=t;
+    x.onclick=()=>{fn(v);w.querySelectorAll("button").forEach(y=>y.classList.remove("sel"));x.classList.add("sel");try{navigator.vibrate&&navigator.vibrate(6)}catch(e){}};w.appendChild(x)});
+   b.appendChild(w);return w;
+  };
+  const toggle=(title,sub,cur,fn)=>{
+   const r=mk("button","dsRow",'<span class="lb"><b></b><small></small></span><span class="dsSw"></span>');
+   r.querySelector("b").textContent=title;r.querySelector("small").textContent=sub;
+   const sw=r.querySelector(".dsSw");sw.classList.toggle("on",!!cur());
+   r.onclick=()=>{const v=!cur();fn(v);sw.classList.toggle("on",v)};
+   b.appendChild(r);
+  };
+
+  sec("COLOUR THEME");
+  const cur=(()=>{try{return localStorage.getItem("rb_theme")||"green"}catch(e){return"green"}})();
+  const sw=mk("div","dsSwatches");
+  const TH=(typeof THEMES!=="undefined")?THEMES:{green:{g:"#00ff9c"}};
+  Object.keys(TH).forEach(n=>{
+   const x=mk("button","dsDot"+(n===cur?" sel":""),'<i></i><span></span>');
+   x.querySelector("i").style.background=TH[n].g;x.querySelector("i").style.boxShadow="0 0 12px "+TH[n].g;
+   x.querySelector("span").textContent=n.toUpperCase();
+   x.onclick=()=>{if(typeof setTheme==="function")setTheme(n);sw.querySelectorAll(".dsDot").forEach(y=>y.classList.remove("sel"));x.classList.add("sel")};
+   sw.appendChild(x);
+  });
+  b.appendChild(sw);
+
+  sec("BACKGROUND");
+  seg([["dark","DARK"],["black","PURE BLACK"],["graphite","GRAPHITE"],["midnight","MIDNIGHT"]],()=>S.bg,v=>set("bg",v));
+
+  sec("FONT");
+  seg([["mono","HACKER MONO"],["sans","CLEAN SANS"]],()=>S.font,v=>set("font",v));
+
+  sec("CHAT TEXT SIZE");
+  const rg=mk("div","dsRange",'<span class="a">A</span><input type="range" min="12" max="22" step="1"><span class="A">A</span><b></b>');
+  const inp=rg.querySelector("input"),val=rg.querySelector("b");
+  inp.value=S.mfs;val.textContent=S.mfs;
+  inp.oninput=()=>{val.textContent=inp.value;S.mfs=+inp.value;apply()};
+  inp.onchange=()=>{save()};
+  b.appendChild(rg);
+
+  sec("MESSAGE CORNERS");
+  seg([["sharp","SHARP"],["round","ROUND"],["pill","SOFT"]],()=>S.radius,v=>set("radius",v));
+
+  sec("CHAT LIST SPACING");
+  seg([["compact","COMPACT"],["normal","NORMAL"],["roomy","ROOMY"]],()=>S.density,v=>set("density",v));
+
+  sec("GLOW");
+  seg([["off","OFF"],["normal","NORMAL"],["high","HIGH"]],()=>S.glow,v=>set("glow",v));
+
+  sec("ANIMATIONS");
+  seg([["full","FULL"],["reduced","REDUCED"],["off","OFF"]],()=>S.motion,v=>set("motion",v));
+  toggle("Login matrix rain","Falling code on the login and start screens",()=>S.rain,v=>set("rain",v));
+
+  sec("TIME & FEEL");
+  seg([["auto","PHONE"],["12","12 HOUR"],["24","24 HOUR"]],()=>S.hour,v=>{set("hour",v,true);tm()});
+  toggle("Vibration","Small taps when you press things",()=>S.haptics,v=>{set("haptics",v);if(v){try{navigator.vibrate(12)}catch(e){}}});
+
+  const rs=mk("button","dsReset","RESET TO DEFAULT");
+  rs.onclick=()=>{
+   S=Object.assign({},DEF);save();apply();
+   if(typeof setTheme==="function")setTheme("green");
+   try{if(typeof room!=="undefined"&&room&&typeof paintAll==="function")paintAll()}catch(e){}
+   if(window.subPage){const bb=b;bb.innerHTML="";page(bb)}
+  };
+  b.appendChild(rs);
+ }
+ window.RBdisplay={page,apply,get:()=>Object.assign({},S)};
+})();

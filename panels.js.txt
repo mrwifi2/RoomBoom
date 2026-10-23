@@ -22,6 +22,9 @@
  addEventListener("error",e=>{errs.push((e.message||"error")+" @"+(e.filename||"").split("/").pop()+":"+e.lineno);if(errs.length>5)errs.shift()});
  addEventListener("unhandledrejection",e=>{errs.push("promise: "+((e.reason&&e.reason.message)||e.reason));if(errs.length>5)errs.shift()});
 
+ /* the profile panel must be able to open above the menu: move it out of #app's stacking layer */
+ document.body.appendChild($("profileOverlay"));document.body.appendChild($("profilePanel"));
+
  /* ============================================================ sub page (full screen, slides from the right) */
  const page=mk("div",null,'<div class="spHead"><button class="icon-btn" id="spBack" aria-label="Back"></button><h3 id="spTitle"></h3></div><div class="spBody" id="spBody"></div>');
  page.id="subPage";document.body.appendChild(page);
@@ -33,15 +36,18 @@
  function closePage(){
   if(closeCard())return true;
   if(!page.classList.contains("on"))return false;
+  if(stack.length){const p=stack.pop();curFill=p.f;curTitle=p.t;$("spTitle").textContent=p.t;const b=$("spBody");b.innerHTML="";b.scrollTop=0;p.f(b);b.classList.remove("swap");void b.offsetWidth;b.classList.add("swap");return true}
   page.classList.remove("on");
   return true;
  }
  $("spBack").onclick=closePage;
- let curFill=null,curTitle="";
+ let curFill=null,curTitle="";const stack=[];
  function openPage(title,fill){
+  if(page.classList.contains("on")&&curFill)stack.push({t:curTitle,f:curFill});else stack.length=0;
 
   curFill=fill;curTitle=title;$("spTitle").textContent=title;
   const b=$("spBody");b.innerHTML="";b.scrollTop=0;fill(b);
+  if(stack.length){b.classList.remove("swap");void b.offsetWidth;b.classList.add("swap")}
   page.classList.add("on"); /* the menu stays open underneath - back just slides this page away */
  }
  const refill=()=>{if(curFill&&page.classList.contains("on")){const b=$("spBody"),y=b.scrollTop;b.innerHTML="";curFill(b);b.scrollTop=y}};
@@ -112,6 +118,11 @@
  /* ============================================================ terminal commands + gestures cheat sheet */
  function cmdsPage(b){
   const c=(cmd,txt)=>{const d=mk("div","cmd","<code></code><p></p>");d.querySelector("code").textContent=cmd;d.querySelector("p").textContent=txt;b.appendChild(d)};
+  const big=(ic,t,sub,fn)=>{const x=mk("button","cmdBig",RBI.svg(ic)+'<span class="lb"><b></b><small></small></span>'+RBI.svg("chev"));x.querySelector("b").textContent=t;x.querySelector("small").textContent=sub;x.onclick=fn;b.appendChild(x)};
+  if(window.RBguide){
+   big("cpu","LINUX COMMANDS","Every command that works in MyTerminal, with examples",()=>openPage("LINUX COMMANDS",RBguide.commands));
+   big("wrench","TERMINAL TROUBLESHOOT","Common problems and how to fix them",()=>openPage("TERMINAL TROUBLESHOOT",RBguide.trouble));
+  }
   b.appendChild(mk("div","spSec","> TYPE THESE IN ANY CHAT"));
   c("/boom 10","turns boom mode on: every message you send self-destructs 10 seconds after sending. any number of seconds works.");
   c("/boom off","turn boom mode off.");
@@ -345,14 +356,14 @@
  (function(){
   const dr=$("drawer"),anchor=$("drawerAdmin");
   dr.insertBefore(mk("div","dsec","&gt; TOOLS"),anchor);
-  [["star","STARRED MESSAGES",starsPage],["bomb","BOOM TIMER",(b)=>window.RBboom&&RBboom.page(b)],["archive","ARCHIVED CHATS",archPage],["terminal","TERMINAL COMMANDS",cmdsPage],
+  [["sliders","DISPLAY SETTINGS",(b)=>window.RBdisplay&&RBdisplay.page(b)],["star","STARRED MESSAGES",starsPage],["bomb","BOOM TIMER",(b)=>window.RBboom&&RBboom.page(b)],["archive","ARCHIVED CHATS",archPage],["terminal","TERMINAL COMMANDS",cmdsPage],
    ["database","STORAGE & CACHE",storagePage],["pulse","DIAGNOSTICS",diagPage],["info","ABOUT & HELP",aboutPage]].forEach(([ic,t,fn])=>{
     const b=mk("button","dtool",RBI.label(ic,t));
     b.onclick=()=>openPage(t,fn);
     dr.insertBefore(b,anchor);
    });
-  /* MyTerminal: for everyone, but only in the real app (it needs the native part) */
-  const tb=mk("button","dtool",RBI.label("terminal","MyTerminal"));tb.id="drawerTerm";
+  /* MyTerminal: its own box in the menu (like MAKE ANNOUNCEMENT), only in the real app (it needs the native part) */
+  const tb=mk("button",null,RBI.svg("cpu")+'<span class="lb">MyTerminal</span>');tb.id="drawerTerm";
   tb.style.display=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.RBTerm)?"":"none";
   tb.onclick=async()=>{
    try{await Capacitor.Plugins.RBTerm.open()}catch(e){toast("terminal is not available in this build","err")}
@@ -369,6 +380,13 @@
  const rCopy=row("copy","COPY USERNAME","",async()=>{
   const ok=await copyText("@"+me.username);toast(ok?"copied @"+me.username:"could not copy",ok?undefined:"err");
  });
+ async function editCallsign(){
+  const v=await modal({title:"> callsign (shown to everyone)",placeholder:"callsign",value:me.callsign||"",okText:"SAVE"});
+  if(v===null)return;
+  await saveCallsign(v);
+ }
+ $("ppName").style.cursor="pointer";$("ppName").onclick=editCallsign;
+ row("edit","EDIT CALLSIGN","",editCallsign);
  row("key","CHANGE PASSKEY","",()=>pwDialog());
  const rSeen=row("eyeoff","HIDE LAST SEEN","",()=>setHide(!me.hide_last_seen));
  rSeen.appendChild(mk("span","sw",""));

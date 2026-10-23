@@ -1,0 +1,135 @@
+/* ===== MyTerminal guide: Linux commands that work in the app + troubleshooting =====
+   RBguide.commands(b) / RBguide.trouble(b) fill a sub page body. Everything is plain English and works offline. */
+(function(){
+ "use strict";
+ const mk=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+ const buzz=n=>{try{navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
+ /* [category, icon, [[command, what it does, example]]] */
+ const CMDS=[
+  ["FIRST STEPS","info",[
+   ["apk update","Refresh the package list. Run this first, once in a while.","apk update"],
+   ["apk add","Install a program.","apk add nano git python3"],
+   ["apk del","Remove a program.","apk del nano"],
+   ["apk search","Find a package by name.","apk search -v python"],
+   ["apk info","List installed packages.","apk info | head"],
+   ["clear","Clear the screen (Ctrl+L does the same).","clear"],
+   ["history","Show the commands you typed before.","history | tail"],
+   ["exit","Close the shell (this stops the terminal).","exit"]]],
+  ["FILES & FOLDERS","file",[
+   ["pwd","Show the folder you are in.","pwd"],
+   ["ls","List files. -l = details, -a = hidden too, -h = readable sizes.","ls -lah"],
+   ["cd","Go to a folder. cd .. = up, cd ~ = home, cd - = back.","cd /root"],
+   ["mkdir","Make a folder. -p makes parents too.","mkdir -p projects/app"],
+   ["touch","Make an empty file.","touch notes.txt"],
+   ["cp","Copy a file. -r copies a folder.","cp -r projects backup"],
+   ["mv","Move or rename.","mv old.txt new.txt"],
+   ["rm","Delete. -r deletes a folder. There is no recycle bin!","rm -r backup"],
+   ["ln -s","Make a shortcut (symbolic link).","ln -s /sdcard/Download dl"],
+   ["find","Search for files by name.","find / -name \"*.txt\" 2>/dev/null | head"],
+   ["du -sh","Size of a folder.","du -sh /root"],
+   ["df -h","Free and used storage.","df -h"]]],
+  ["READ & EDIT TEXT","edit",[
+   ["cat","Print a whole file.","cat notes.txt"],
+   ["head / tail","First or last lines. tail -f follows a growing file.","tail -n 20 log.txt"],
+   ["less","Scroll through a long file (q to quit).","less big.txt"],
+   ["echo","Print text, or write it into a file with > and >>.","echo hello > hi.txt"],
+   ["nano","Easy text editor. Install once: apk add nano. Save = Ctrl+O, exit = Ctrl+X.","nano notes.txt"],
+   ["vi","Built-in editor. i = type, Esc then :wq = save and quit.","vi notes.txt"],
+   ["grep","Search inside files. -i ignores case, -r goes through folders.","grep -ri \"error\" ."],
+   ["wc","Count lines/words. wc -l = lines.","wc -l notes.txt"],
+   ["sort / uniq","Sort lines, remove repeated lines.","sort names.txt | uniq"],
+   ["sed","Find and replace in text.","sed -i 's/old/new/g' notes.txt"]]],
+  ["SYSTEM INFO","pulse",[
+   ["whoami","Your user name inside Linux (root).","whoami"],
+   ["uname -a","Kernel and CPU type.","uname -a"],
+   ["cat /etc/os-release","Which Linux you are running.","cat /etc/os-release"],
+   ["free -m","Memory use in MB.","free -m"],
+   ["ps","Running programs.","ps"],
+   ["top","Live view of programs (q to quit).","top"],
+   ["kill","Stop a program by its PID from ps.","kill 123"],
+   ["date","Current date and time.","date"],
+   ["env","Show environment variables.","env | head"],
+   ["which","Where a command lives.","which python3"]]],
+  ["INTERNET & DOWNLOADS","link",[
+   ["apk add curl","Install curl first.","apk add curl"],
+   ["curl","Fetch a web page or API. -L follows redirects, -O saves with its name.","curl -L https://example.com"],
+   ["curl -I","Only the headers: quick way to test a website.","curl -I https://example.com"],
+   ["wget","Download a file (built in).","wget https://example.com/file.zip"],
+   ["ssh","Log in to another computer. Install: apk add openssh-client.","ssh user@server.com"],
+   ["scp","Copy files over ssh.","scp file.txt user@server.com:/tmp"]]],
+  ["ARCHIVES","archive",[
+   ["tar -czf","Make a .tar.gz archive.","tar -czf backup.tar.gz projects"],
+   ["tar -xzf","Extract a .tar.gz archive.","tar -xzf backup.tar.gz"],
+   ["gzip / gunzip","Compress or decompress one file.","gzip big.txt"],
+   ["apk add zip unzip","Install zip support, then:","zip -r a.zip folder && unzip a.zip"]]],
+  ["PROGRAMMING","terminal",[
+   ["python3","Install: apk add python3 py3-pip. Then run a file or start the shell.","python3 hello.py"],
+   ["pip install","Install a Python library. Add --break-system-packages if pip refuses.","pip install requests --break-system-packages"],
+   ["node","Install: apk add nodejs npm.","node app.js"],
+   ["git","Install: apk add git. Clone and manage code.","git clone https://github.com/user/repo"],
+   ["gcc","Install: apk add build-base. Compile C programs.","gcc hello.c -o hello && ./hello"],
+   ["chmod +x","Make a script runnable, then start it with ./","chmod +x run.sh && ./run.sh"]]],
+  ["PHONE STORAGE","database",[
+   ["ls /sdcard","Your phone's files appear in /sdcard (if Android allows it).","ls /sdcard"],
+   ["cp to /sdcard","Save a file from Linux to your phone.","cp report.txt /sdcard/Download/"],
+   ["cp from /sdcard","Bring a phone file into Linux.","cp /sdcard/Download/data.csv ."]]],
+  ["SHORTCUTS","key",[
+   ["Ctrl + C","Stop the running command. Ctrl is the CTRL key on the extra row, or Volume Down.","(press) CTRL then C"],
+   ["Ctrl + D","Send end-of-input (exit a shell or python prompt).","(press) CTRL then D"],
+   ["Ctrl + L","Clear the screen.","(press) CTRL then L"],
+   ["TAB","Auto-complete a file or command name.","cd pro<TAB>"],
+   ["Up / Down","Bring back an older command.","(press) arrow up"],
+   ["cmd1 && cmd2","Run cmd2 only if cmd1 worked.","apk update && apk add git"],
+   ["cmd1 | cmd2","Send the output of cmd1 into cmd2.","ls -l | grep txt"],
+   ["cmd > file","Save output into a file (>> adds to the end).","ls > files.txt"]]]
+ ];
+ const TROUBLE=[
+  ["The keyboard does not appear","Tap once inside the black terminal area. If it still does not show, open the menu (the key on the extra row), close the terminal screen with Back and open MyTerminal again."],
+  ["It says \"Setup failed\" or stays on \"Preparing\"","The first start unpacks Linux and needs about 50 MB of free phone storage. Free some space, then open MyTerminal again. If it says the files are \"not found in app assets\", this app build has no Linux inside: tell the admin to rebuild the app."],
+  ["apk says \"temporary error\", \"fetch failed\" or \"DNS\"","The terminal has no internet. Check your phone's data or Wi-Fi first. Then test with: curl -I https://example.com . You can also run: echo \"nameserver 1.1.1.1\" > /etc/resolv.conf"],
+  ["apk says \"Operation not permitted\" or \"updating and opening ... failed\"","This was a problem with newer Alpine versions inside the app. Update RoomBoom to the latest version: it comes with Alpine 3.20, where apk works. The first start after the update sets Linux up again (your old Linux files are replaced). Copy anything you need to /sdcard before updating."],
+  ["\"command not found\"","The program is not installed. Install it with apk add NAME. Not sure of the name? Use: apk search -v NAME . Remember Alpine uses apk, not apt."],
+  ["ping does not work","This is normal. Android does not allow ping inside apps. To test the internet use: curl -I https://example.com"],
+  ["pip says \"externally-managed-environment\"","Add this flag: pip install NAME --break-system-packages"],
+  ["The terminal stops when I leave the app","Allow notifications and set battery to \"Unrestricted\" for this app. In the terminal menu choose \"Background permission\". The notification Exit button or \"Exit terminal\" in the menu stops it on purpose."],
+  ["Ctrl does not work","Use the CTRL key on the extra row, or hold Volume Down while pressing the letter. Example: Volume Down + C stops a program."],
+  ["I cannot see my phone files in /sdcard","Open Android Settings > Apps > RoomBoom > Permissions and allow Files / All files access. Then run: ls /sdcard"],
+  ["\"No space left on device\"","Check with df -h. Clean up with: apk cache clean , and delete big files with rm. Large downloads can fill your phone, so keep some free space."],
+  ["Text is too small or too big","Pinch with two fingers to zoom, or open the menu and use Text size + / -."],
+  ["How do I paste text?","Open the terminal menu and tap Paste. Long-press on the terminal to select text and copy it."],
+  ["A command hangs and nothing happens","Press CTRL then C. If the screen is frozen, open the menu and choose \"Exit terminal (stop everything)\", then open MyTerminal again."],
+  ["\"permission denied\" on a file","Make a script runnable with chmod +x file. System folders like /proc and /sys are read-only here."],
+  ["Some commands are not available","These do not work inside the app: ping, systemctl, docker, mount, gdb, strace, su, and Android termux-* commands. Use normal programs and scripts instead."],
+  ["MyTerminal is missing in the menu","It only exists in the installed Android app, not in a browser. It also needs a 64-bit (arm64) phone. Update the app to the latest version."],
+  ["The wrong Linux or a broken setup","Everything lives in the app's own storage. Clearing the app's data in Android settings resets MyTerminal to a fresh Linux (it also logs you out)."]
+ ];
+ function acc(b,title,icon,count,fill){
+  const box=mk("div","gAcc");
+  const h=mk("button","gHead",RBI.svg(icon)+'<span class="lb"></span><small></small>'+RBI.svg("chev"));
+  h.querySelector(".lb").textContent=title;h.querySelector("small").textContent=count||"";
+  const body=mk("div","gBody"),inner=mk("div","gIn");body.appendChild(inner);
+  let filled=false;
+  h.onclick=()=>{
+   if(!filled){fill(inner);filled=true}
+   const open=!box.classList.contains("open");
+   if(open){body.style.maxHeight=inner.scrollHeight+"px";box.classList.add("open");setTimeout(()=>{if(box.classList.contains("open"))body.style.maxHeight="none"},300)}
+   else{body.style.maxHeight=inner.scrollHeight+"px";void body.offsetWidth;box.classList.remove("open");body.style.maxHeight="0px"}
+   buzz(6);
+  };
+  box.appendChild(h);box.appendChild(body);b.appendChild(box);return box;
+ }
+ function cmdRow(c){
+  const d=mk("div","gCmd","<code></code><p></p><div class=\"gEx\"><span>EXAMPLE</span><code></code></div>");
+  d.children[0].textContent=c[0];d.children[1].textContent=c[1];d.querySelector(".gEx code").textContent=c[2];
+  return d;
+ }
+ function commands(b){
+  b.appendChild(mk("div","gNote","These commands work inside MyTerminal (Alpine Linux). Tap a group to open it. Type the example exactly as shown."));
+  CMDS.forEach(([t,ic,list])=>acc(b,t,ic,list.length+"",inner=>list.forEach(c=>inner.appendChild(cmdRow(c)))));
+ }
+ function trouble(b){
+  b.appendChild(mk("div","gNote","Something wrong in MyTerminal? Find the problem below and follow the fix."));
+  TROUBLE.forEach(([q,a])=>acc(b,q,"alert","",inner=>{const p=mk("p","gAns","");p.textContent=a;inner.appendChild(p)}));
+ }
+ window.RBguide={commands,trouble,CMDS,TROUBLE};
+})();
