@@ -476,6 +476,7 @@ $("back").onclick=backNav;
 (()=>{const AP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;if(AP)AP.addListener("backButton",()=>backNav())})();
 /* ---------- drawer (identity / theme / admin / settings) ---------- */
 function openDrawer(){
+ if(!me||$("app").style.display!=="flex")return;
  paintDrawerHead();
  $("drawerAdmin").style.display=me.role==="admin"?"":"none";
  if($("drawerTerm"))$("drawerTerm").style.display=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.RBTerm)?"":"none";

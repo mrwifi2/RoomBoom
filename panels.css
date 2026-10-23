@@ -103,7 +103,9 @@
 
 /* command panel shown inside a sub page */
 #subPage #v-admin{display:block;flex:none;padding:0}
-#subPage #v-admin .list{padding:6px 16px 40px}
+#subPage #v-admin .list{padding:6px 16px 40px;overflow:visible;overscroll-behavior:auto;height:auto;flex:none;scroll-behavior:auto}
+#subPage #v-admin{height:auto;min-height:0;overflow:visible}
+#subPage .spBody{overscroll-behavior:contain;touch-action:pan-y}
 
 /* ---------- terminal guide (commands + troubleshoot) ---------- */
 .spBody.swap{animation:spSwap .26s cubic-bezier(.2,.9,.3,1)}

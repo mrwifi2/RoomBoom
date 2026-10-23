@@ -169,6 +169,7 @@
  document.addEventListener("touchstart",e=>{
   g=null;
   if(e.touches.length!==1||isField(e.target))return;
+  if($("app").style.display!=="flex")return; /* login screen: no menu, no gestures */
   const t=e.touches[0],open=drawer.classList.contains("open");
   const base={x:t.clientX,y:t.clientY,mode:0,vt:VT(),W:drawer.offsetWidth||280};
   base.vt.push(t.clientX,e.timeStamp);

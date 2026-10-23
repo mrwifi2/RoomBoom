@@ -24,11 +24,17 @@ const RBC=(function(){
 /* ---------- RBlog: a small persistent error log (survives restarts) so bugs can be reported with real details ---------- */
 const RBlog=(()=>{
  const K="rb_errlog";
- const get=()=>{try{return JSON.parse(localStorage.getItem(K))||[]}catch(e){return[]}};
+ /* errors that are just noise: the phone had no network for a moment, or the app was in the background
+    (for example while the MyTerminal screen is open, the web page is paused and its requests fail) */
+ const NOISE=/failed to fetch|load failed|networkerror|network request failed|fetch failed|err_internet|aborterror|operation was aborted|signal is aborted|myterminal|rbterm|terminalactivity|plugin .*(not implemented|not available)|ResizeObserver loop|^Script error\.?$/i;
+ let hiddenAt=document.hidden?Date.now():0,backAt=0;
+ document.addEventListener("visibilitychange",()=>{if(document.hidden)hiddenAt=Date.now();else{backAt=Date.now();hiddenAt=0}});
+ const quiet=()=>document.hidden||(backAt&&Date.now()-backAt<60000);
+ const get=()=>{try{return(JSON.parse(localStorage.getItem(K))||[]).filter(x=>!NOISE.test(String(x&&x.m||"")))}catch(e){return[]}};
  const add=(kind,msg)=>{
   try{
    let m=String((msg&&msg.message)||msg||"").slice(0,240);
-   if(!m||/ResizeObserver loop|^Script error\.?$/.test(m))return;
+   if(!m||NOISE.test(m)||quiet())return;
    const a=get(),last=a[a.length-1];
    if(last&&last.m===m&&Date.now()-last.t<3000)return;
    let v="";try{v=curView}catch(e){}
@@ -38,7 +44,7 @@ const RBlog=(()=>{
  };
  addEventListener("error",e=>add("js",(e.message||"error")+" @"+String(e.filename||"").split("/").pop()+":"+e.lineno));
  addEventListener("unhandledrejection",e=>add("promise",(e.reason&&e.reason.message)||e.reason));
- return{get,add,clear:()=>{try{localStorage.removeItem(K)}catch(e){}}};
+ return{get,add,noise:m=>NOISE.test(String(m||""))||quiet(),clear:()=>{try{localStorage.removeItem(K)}catch(e){}}};
 })();
 
 /* RBS: small local flags per chat (pinned / muted) */

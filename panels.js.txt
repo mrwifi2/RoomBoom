@@ -19,8 +19,9 @@
 
  /* remember the last few errors so "copy debug info" is useful */
  const errs=[];
- addEventListener("error",e=>{errs.push((e.message||"error")+" @"+(e.filename||"").split("/").pop()+":"+e.lineno);if(errs.length>5)errs.shift()});
- addEventListener("unhandledrejection",e=>{errs.push("promise: "+((e.reason&&e.reason.message)||e.reason));if(errs.length>5)errs.shift()});
+ const pushErr=t=>{if(window.RBlog&&RBlog.noise(t))return;errs.push(t);if(errs.length>5)errs.shift()};
+ addEventListener("error",e=>pushErr((e.message||"error")+" @"+(e.filename||"").split("/").pop()+":"+e.lineno));
+ addEventListener("unhandledrejection",e=>pushErr("promise: "+((e.reason&&e.reason.message)||e.reason)));
 
  /* the profile panel must be able to open above the menu: move it out of #app's stacking layer */
  document.body.appendChild($("profileOverlay"));document.body.appendChild($("profilePanel"));
