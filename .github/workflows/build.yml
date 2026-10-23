@@ -20,8 +20,8 @@ jobs:
           set -x
           mkdir -p www
           cp roomboom-ui.html www/index.html
-          cp nav.css ui.css chat.css home.css panels.css boom.css player.css picker.css www/
-          for f in nav icons offline gestures chat home boom player picker panels; do
+          cp nav.css ui.css chat.css home.css panels.css boom.css player.css picker.css display.css www/
+          for f in nav icons offline gestures chat home boom player picker display termguide panels; do
             if [ -f "$f.js.txt" ]; then cp "$f.js.txt" "www/$f.js"; elif [ -f "$f.js" ]; then cp "$f.js" "www/$f.js"; else echo "missing $f.js"; exit 1; fi
           done
           cp node_modules/@supabase/supabase-js/dist/umd/supabase.js www/supabase.js || echo "local supabase copy skipped (CDN fallback will be used)"
