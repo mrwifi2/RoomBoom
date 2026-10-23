@@ -50,10 +50,15 @@ jobs:
           cp MainActivity.java.txt "$MAINACT"
           cp RBMediaPlugin.java.txt android/app/src/main/java/com/roomboom/app/RBMediaPlugin.java
           sed -i '/<uses-permission android:name="android.permission.INTERNET" \/>/a\    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" \/>' android/app/src/main/AndroidManifest.xml
+          unzip -o terminal-src.zip -d terminal-src
+          mkdir -p android/app/src/main/java/com/myterminal/app
+          cp terminal-src/src/com/myterminal/app/*.java android/app/src/main/java/com/myterminal/app/
+          cp RBTermPlugin.java.txt android/app/src/main/java/com/roomboom/app/RBTermPlugin.java
+          python3 terminal-src/inject.py
+          bash terminal-src/fetch-assets.sh android/app/src/main
           npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: roomboom-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          
