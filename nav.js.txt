@@ -157,7 +157,7 @@ function swipeToDelete(wrap,card,onDelete){
    if(Math.abs(dy)>Math.abs(dx)*.8||dx>0){st=null;return}
    st.mode=1;card.style.transition="none";card.style.willChange="transform";wrap.classList.add("sw");
   }
-  st.dx=Math.min(0,dx);st.v=st.dx/Math.max(1,e.timeStamp-st.t0);
+  e.stopPropagation();st.dx=Math.min(0,dx);st.v=st.dx/Math.max(1,e.timeStamp-st.t0);
   card.style.transform="translate3d("+st.dx+"px,0,0)";
   wrap.style.setProperty("--p",String(Math.min(1,-st.dx/TH)));
  },{passive:true});

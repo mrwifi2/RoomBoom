@@ -227,3 +227,9 @@ body{background:var(--bg)!important}
 /* repeated message: pulse instead of stacking */
 .toast.bump{animation:tbump .28s cubic-bezier(.3,1.4,.5,1)}
 @keyframes tbump{0%{transform:scale(.96)}60%{transform:scale(1.03)}100%{transform:scale(1)}}
+
+/* no focus rings / yellow boxes on buttons and tabs (WebView shows them after a tap) */
+button:focus,button:focus-visible,a:focus,[tabindex]:focus,[role=tab]:focus,.tab:focus{outline:none!important;box-shadow:none}
+button::-moz-focus-inner{border:0}
+/* swipe-to-delete cards: the entry animation must not hold the transform (it overrides the finger) */
+.nSwipe .annCard{animation:none!important}

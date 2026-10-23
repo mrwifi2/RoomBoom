@@ -860,7 +860,8 @@ function draw(m){
  if(isNew){
   if(m.sender_id!==me.id)$("typing").classList.remove("on");
   if(stick)box.scrollTop=1e9;else{newCount++;showTobot()}
-  if(!pending&&left!==null)setTimeout(()=>boom(d),left)}
+  }
+ if(!pending&&left!==null&&!d._bt)d._bt=setTimeout(()=>boom(d),Math.max(0,left)); /* also for our own message once the server confirms it */
 }
 function boom(d){
  const h=d.offsetHeight;
