@@ -34,7 +34,15 @@
   v=!!v&&typeof room!=="undefined"&&!!room&&curView==="chat";
   if(v===on){paint();return}
   on=v;paint();
-  if(!silent){buzz(on?[18,40,18]:14);flash(on?"BOOM MODE ON · "+lab(secs):"BOOM MODE OFF",on)}
+  if(!silent){buzz(on?[18,40,18]:14);ring(on)}
+ }
+ /* circle animation (like Instagram vanish mode) - no text */
+ const rg=mk("div",null,"<i></i>");rg.id="boomRing";view.appendChild(rg);
+ function ring(v){
+  const i=rg.firstChild;i.getAnimations().forEach(a=>a.cancel());
+  const f=v?[{transform:"translate(-50%,50%) scale(.05)",opacity:.95},{transform:"translate(-50%,50%) scale(1)",opacity:0}]
+           :[{transform:"translate(-50%,50%) scale(1)",opacity:.6},{transform:"translate(-50%,50%) scale(.05)",opacity:0}];
+  i.animate(f,{duration:v?720:480,easing:"cubic-bezier(.2,.8,.25,1)"});
  }
  let flT=null;
  function flash(text,hot){

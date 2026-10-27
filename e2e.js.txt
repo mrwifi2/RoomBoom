@@ -1,0 +1,377 @@
+/* ===== RoomBoom: end-to-end encryption for 1-to-1 chats (text messages) =====
+   Crypto: ECDH P-256 key pair per user -> shared secret -> HKDF -> AES-256-GCM per message (random IV).
+   Only PUBLIC keys go to the server (table user_keys). The private key stays on the phone; a copy locked with the
+   user's passphrase (PBKDF2 -> AES-GCM) can be stored in key_backups so a new phone can restore it.
+   Message format in messages.body:  e2e1.<senderKeyFp>.<recipientKeyFp>.<iv>.<ciphertext>   (base64 parts)
+   Hooks used by the main script / offline.js:  RBe2e.init, whenReady, protect, dec, decMany, onOpen, page.
+   Not encrypted (v1): photos, voice notes, files, group chats, who talks to whom, times. */
+(function(){
+ "use strict";
+ const PFX="e2e1",DEL="::deleted::",ITER=250000;
+ const enc=new TextEncoder(),dec_=new TextDecoder(),subtle=window.crypto&&crypto.subtle;
+ const $=id=>document.getElementById(id);
+ const mk=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+ const buzz=n=>{try{navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
+ const b64=buf=>{const a=new Uint8Array(buf);let s="";for(let i=0;i<a.length;i+=8192)s+=String.fromCharCode.apply(null,a.subarray(i,i+8192));return btoa(s)};
+ const unb64=s=>{const bin=atob(s),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a};
+ const hex=buf=>[...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,"0")).join("");
+ const canon=j=>JSON.stringify({crv:j.crv,kty:j.kty,x:j.x,y:j.y});
+ const missing=err=>/does not exist|schema cache|could not find|pgrst20|42p01/i.test(String(err&&(err.message||err.code)||""));
+ const EC={name:"ECDH",namedCurve:"P-256"};
+
+ let ring=[],ready=false,unavailable=false,initP=null,settle=null,backupExists=null,prompting=false;
+ const settled=new Promise(r=>settle=r);
+ const latestC=new Map(),fpC=new Map(),fpP=new Map(),sharedC=new Map(),roomPeer=new Map();
+ const uid=()=>(typeof me!=="undefined"&&me)?me.id:"x";
+ const RK=()=>"rb_e2e_keys_"+uid(),PK=()=>"rb_e2e_pins_"+uid();
+ const jget=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
+ const jset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+ const getPins=()=>jget(PK(),{});
+ const setPin=(peer,fp,ok)=>{const p=getPins();p[peer]={fp,ok:!!ok,t:Date.now()};jset(PK(),p)};
+
+ async function fpOf(jwk){return hex((await subtle.digest("SHA-256",enc.encode(canon(jwk)))).slice(0,8))}
+ const fmtFp=fp=>String(fp||"").toUpperCase().replace(/(.{4})/g,"$1 ").trim();
+ const pubOnly=j=>({kty:j.kty,crv:j.crv,x:j.x,y:j.y,ext:true});
+ async function genKey(){
+  const kp=await subtle.generateKey(EC,true,["deriveBits"]);
+  const priv=await subtle.exportKey("jwk",kp.privateKey),pub=pubOnly(await subtle.exportKey("jwk",kp.publicKey));
+  return{priv,pub,fp:await fpOf(pub),t:Date.now()};
+ }
+ async function sharedKey(mine,peerFp,peerJwk){
+  const ck=mine.fp+"|"+peerFp;if(sharedC.has(ck))return sharedC.get(ck);
+  const priv=await subtle.importKey("jwk",mine.priv,EC,false,["deriveBits"]);
+  const pub=await subtle.importKey("jwk",pubOnly(peerJwk),EC,false,[]);
+  const bits=await subtle.deriveBits({name:"ECDH",public:pub},priv,256);
+  const hk=await subtle.importKey("raw",bits,"HKDF",false,["deriveKey"]);
+  const key=await subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt:new Uint8Array(32),info:enc.encode("RoomBoom DM v1")},hk,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+  sharedC.set(ck,key);return key;
+ }
+ const aad=r=>enc.encode(r.room_id+"|"+r.sender_id+"|"+r.id);
+
+ /* ---------- keys on the server ---------- */
+ async function latest(userId){
+  const c=latestC.get(userId);if(c&&Date.now()-c.t<30000)return c.v;
+  const {data,error}=await sb.from("user_keys").select("fp,jwk,created_at").eq("user_id",userId).order("created_at",{ascending:false}).limit(1);
+  if(error){if(missing(error)){unavailable=true;return null}throw error}
+  const v=data&&data[0]?{fp:data[0].fp,jwk:data[0].jwk,user_id:userId}:null;
+  latestC.set(userId,{v,t:Date.now()});if(v)fpC.set(v.fp,v);return v;
+ }
+ async function byFp(fp){
+  const m=ring.find(k=>k.fp===fp);if(m)return{fp,jwk:m.pub,user_id:uid()};
+  if(fpC.has(fp))return fpC.get(fp);
+  if(fpP.has(fp))return fpP.get(fp);
+  const p=(async()=>{
+   const {data,error}=await sb.from("user_keys").select("fp,jwk,user_id").eq("fp",fp).maybeSingle();
+   if(error)throw error;if(data)fpC.set(fp,data);return data||null;
+  })();
+  fpP.set(fp,p);try{return await p}finally{fpP.delete(fp)}
+ }
+ async function publish(k){
+  const {error}=await sb.from("user_keys").upsert({fp:k.fp,user_id:uid(),jwk:k.pub},{onConflict:"fp",ignoreDuplicates:true});
+  if(error)throw error;
+ }
+ const peerOf=async roomId=>{
+  if(roomPeer.has(roomId))return roomPeer.get(roomId);
+  const {data,error}=await sb.from("room_members").select("user_id,rooms(type)").eq("room_id",roomId);
+  if(error)throw error;
+  const dm=(data||[]).some(x=>x.rooms&&x.rooms.type==="dm"),o=(data||[]).find(x=>x.user_id!==uid());
+  const v=dm&&o?o.user_id:null;roomPeer.set(roomId,v);return v;
+ };
+
+ /* ---------- encrypt / decrypt a message ---------- */
+ async function protect(row){
+  try{
+   if(!subtle||unavailable||row.media_path||!row.body||row.body===DEL||String(row.body).startsWith(PFX+"."))return{body:row.body};
+   const peerId=await peerOf(row.room_id);if(!peerId)return{body:row.body};
+   const peer=await latest(peerId);if(unavailable)return{body:row.body};
+   const pin=getPins()[peerId];
+   if(!peer){
+    if(pin)return{error:{message:"their encryption key is missing - ask them to open RoomBoom"}};
+    return{body:row.body}; /* they have not set up encryption yet: sent as normal text (the chat shows a warning) */
+   }
+   if(pin&&pin.fp!==peer.fp)return{error:{message:"security code changed - tap the lock icon in the chat to review it"}};
+   const mine=ring[ring.length-1];
+   if(!mine)return{error:{message:"encryption is not ready on this phone - open menu > Encryption"}};
+   if(!pin)setPin(peerId,peer.fp,false); /* trust on first use; verify the code to be sure */
+   const key=await sharedKey(mine,peer.fp,peer.jwk),iv=crypto.getRandomValues(new Uint8Array(12));
+   const ct=await subtle.encrypt({name:"AES-GCM",iv,additionalData:aad(row)},key,enc.encode(row.body));
+   return{body:PFX+"."+mine.fp+"."+peer.fp+"."+b64(iv)+"."+b64(ct)};
+  }catch(e){
+   if(e&&e.message&&/crypt|import|derive|operation/i.test(e.message)&&!/fetch|network/i.test(e.message))return{error:{message:"could not encrypt this message"}};
+   throw e;
+  }
+ }
+ const LOCKED="[encrypted message - its key is not on this phone]";
+ async function dec(row){
+  if(!row||typeof row.body!=="string")return row;
+  let b=row.body;
+  if(row._locked&&row._raw)b=row._raw;
+  if(!b.startsWith(PFX+"."))return row;
+  const f=b.split(".");if(f.length!==5)return row;
+  const fail=()=>{row._raw=b;row._locked=1;row.body=LOCKED;row._e2e=0;return row};
+  try{
+   if(!subtle)return fail();
+   const imSender=row.sender_id===uid(),myFp=imSender?f[1]:f[2],peerFp=imSender?f[2]:f[1];
+   const mine=ring.find(k=>k.fp===myFp);if(!mine)return fail();
+   const peer=await byFp(peerFp);if(!peer)return fail();
+   if(!imSender&&peer.user_id!==row.sender_id)return fail();
+   const key=await sharedKey(mine,peer.fp,peer.jwk);
+   const pt=await subtle.decrypt({name:"AES-GCM",iv:unb64(f[3]),additionalData:aad(row)},key,unb64(f[4]));
+   row._raw=b;row._e2e=1;row._locked=0;row.body=dec_.decode(pt);return row;
+  }catch(e){return fail()}
+ }
+ const decMany=async rows=>{if(rows&&rows.length&&rows.some(r=>r&&typeof r.body==="string"&&(r.body.startsWith(PFX+".")||r._locked)))await Promise.all(rows.map(dec));return rows};
+
+ /* ---------- local key ring + backup ---------- */
+ const loadRing=()=>{ring=jget(RK(),[]).filter(k=>k&&k.priv&&k.pub&&k.fp)};
+ const saveRing=()=>jset(RK(),ring);
+ async function backupKey(pass,salt){
+  const base=await subtle.importKey("raw",enc.encode(pass),"PBKDF2",false,["deriveKey"]);
+  return subtle.deriveKey({name:"PBKDF2",salt,iterations:ITER,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+ }
+ async function makeBackup(pass){
+  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
+  const k=await backupKey(pass,salt),ct=await subtle.encrypt({name:"AES-GCM",iv},k,enc.encode(JSON.stringify(ring)));
+  const {error}=await sb.from("key_backups").upsert({user_id:uid(),salt:b64(salt),iv:b64(iv),blob:b64(ct),updated_at:new Date().toISOString()});
+  if(error)throw error;backupExists=true;
+ }
+ async function openBackup(row,pass){
+  const k=await backupKey(pass,unb64(row.salt));
+  const pt=await subtle.decrypt({name:"AES-GCM",iv:unb64(row.iv)},k,unb64(row.blob));
+  return JSON.parse(dec_.decode(pt));
+ }
+
+ /* ---------- passphrase dialog ---------- */
+ function ask({title,note,fields,ok,extra}){
+  return new Promise(res=>{
+   const w=$("modalWrap"),b=$("modalBox");b.innerHTML="";
+   b.appendChild(mk("div","mt",title));
+   if(note)b.appendChild(mk("div","e2eNote",note));
+   const ins=(fields||[]).map(ph=>{const i=mk("input","pwf");i.type="password";i.placeholder=ph;i.autocomplete="off";b.appendChild(i);return i});
+   const err=mk("div","perr","");b.appendChild(err);
+   const row=mk("div","mb","");b.appendChild(row);
+   const close=v=>{w.classList.remove("on");w.onclick=null;res(v)};
+   (extra||[]).forEach(([t,v])=>{const x=mk("button",null,t);x.onclick=()=>close(v);row.appendChild(x)});
+   const go=mk("button",null,ok||"OK");
+   go.onclick=()=>close({vals:ins.map(i=>i.value),err});
+   row.appendChild(go);w.classList.add("on");w.onclick=null;
+   if(ins[0])setTimeout(()=>ins[0].focus(),60);
+  });
+ }
+ async function createPassphrase(first){
+  for(;;){
+   const r=await ask({title:"> encryption backup passphrase",
+    note:(first?"Your chats are now end-to-end encrypted. ":"")+"Choose a passphrase to back up your encryption key. You need it if you change phones or reinstall. If you lose BOTH this phone and the passphrase, old messages can never be read again. Nobody can reset it for you.",
+    fields:["passphrase (min 8 characters)","repeat passphrase"],ok:"SAVE BACKUP",extra:[["LATER","skip"]]});
+   if(r==="skip")return false;
+   if(!r)return false;
+   const [a,c]=r.vals;
+   if(a.length<8){toast("passphrase must be at least 8 characters","err");continue}
+   if(a!==c){toast("the two passphrases don't match","err");continue}
+   try{await makeBackup(a);toast("encryption backup saved");return true}
+   catch(e){toast(e,"err");return false}
+  }
+ }
+ async function restoreFlow(row){
+  for(;;){
+   const r=await ask({title:"> restore your encryption key",
+    note:"This account already has an encryption key backup. Enter your backup passphrase to read your old messages on this phone.",
+    fields:["backup passphrase"],ok:"RESTORE",extra:[["NOT NOW","later"],["NEW KEYS","new"]]});
+   if(!r||r==="later")return false;
+   if(r==="new"){
+    const sure=await ask({title:"> start with new keys?",note:"Old encrypted messages will become unreadable on every device unless you restore later. Your old backup will be replaced.",fields:[],ok:"START NEW",extra:[["CANCEL","no"]]});
+    if(!sure||sure==="no")continue;
+    await createNew(false);return true;
+   }
+   try{
+    const keys=await openBackup(row,r.vals[0]);
+    if(!Array.isArray(keys)||!keys.length)throw new Error("empty");
+    ring=keys;saveRing();ready=true;toast("encryption restored");return true;
+   }catch(e){toast("wrong passphrase","err")}
+  }
+ }
+ async function createNew(first){
+  const k=await genKey();ring.push(k);saveRing();
+  await publish(k);latestC.delete(uid());ready=true;sharedC.clear();
+  await createPassphrase(first);
+ }
+
+ /* ---------- start-up ---------- */
+ async function syncKeys(){
+  const {data,error}=await sb.from("user_keys").select("fp").eq("user_id",uid());
+  if(error){if(missing(error)){unavailable=true;return}throw error}
+  const pub=new Set((data||[]).map(x=>x.fp));
+  if(ring.length){
+   for(const k of ring)if(!pub.has(k.fp))await publish(k);
+   ready=true;
+   const b=await sb.from("key_backups").select("user_id").eq("user_id",uid()).maybeSingle();
+   backupExists=!!b.data;
+   if(!backupExists)remindBackup();
+   return;
+  }
+  /* no key on this phone */
+  const bk=await sb.from("key_backups").select("*").eq("user_id",uid()).maybeSingle();
+  await waitIdle();
+  if(bk.data){backupExists=true;await restoreFlow(bk.data)}
+  else await createNew(!(data&&data.length));
+ }
+ const waitIdle=async()=>{for(let i=0;i<60;i++){if(!$("modalWrap").classList.contains("on")&&$("app").style.display==="flex")return;await new Promise(r=>setTimeout(r,1000))}};
+ function remindBackup(){
+  const k="rb_e2e_remind_"+uid(),last=+localStorage.getItem(k)||0;
+  if(Date.now()-last<864e5)return;
+  try{localStorage.setItem(k,String(Date.now()))}catch(e){}
+  setTimeout(()=>toast("tip: set an encryption backup passphrase (menu > Encryption)"),4000);
+ }
+ function init(){
+  if(initP)return initP;
+  initP=(async()=>{
+   try{
+    if(!subtle){unavailable=true;return}
+    loadRing();
+    if(ring.length)ready=true; /* usable at once, even offline */
+    if(navigator.onLine)await syncKeys();
+    else addEventListener("online",()=>{initP=null;init()},{once:true});
+   }catch(e){
+    initP=null;setTimeout(init,15000);
+   }finally{settle()}
+  })();
+  return initP;
+ }
+ const whenReady=()=>Promise.race([settled,new Promise(r=>setTimeout(r,6000))]);
+
+ /* ---------- chat lock icon, bar and page ---------- */
+ const view=$("v-chat");
+ const lockBtn=mk("button","icon-btn","");lockBtn.id="lockBtn";lockBtn.style.display="none";
+ const hdr=$("titleWrap");hdr.parentNode.insertBefore(lockBtn,hdr.nextSibling);
+ const bar=mk("div",null,'<span class="ei"></span><span class="et"></span>');bar.id="e2eBar";
+ view.insertBefore(bar,$("typing"));
+ let curRoom=null;
+ async function stateOf(roomId){
+  const peerId=roomPeer.get(roomId);
+  if(!peerId)return{kind:"none"};
+  if(unavailable)return{kind:"off",peerId};
+  let peer=null;try{peer=await latest(peerId)}catch(e){return{kind:"unknown",peerId}}
+  if(unavailable)return{kind:"off",peerId};
+  const pin=getPins()[peerId];
+  if(!peer)return{kind:pin?"missing":"plain",peerId,pin};
+  if(pin&&pin.fp!==peer.fp)return{kind:"changed",peerId,peer,pin};
+  if(!ring.length)return{kind:"locked",peerId,peer,pin};
+  return{kind:"enc",peerId,peer,pin,mine:ring[ring.length-1]};
+ }
+ const pname=id=>(typeof profiles!=="undefined"&&profiles[id]&&(profiles[id].callsign||profiles[id].username))||"them";
+ async function refreshChat(){
+  const id=curRoom;if(!id)return;
+  const s=await stateOf(id);if(curRoom!==id)return;
+  const show=s.kind!=="none"&&s.kind!=="off";
+  lockBtn.style.display=show&&curView==="chat"?"":"none";
+  lockBtn.className="icon-btn e2e-"+s.kind;
+  lockBtn.innerHTML=RBI.svg(s.kind==="enc"?"lock":"unlock");
+  const msg={plain:["NOT ENCRYPTED · "+pname(s.peerId)+" has not set up encryption yet","warn"],
+   changed:["SECURITY CODE CHANGED · tap to review","bad"],missing:["ENCRYPTION KEY MISSING · tap for details","bad"],
+   locked:["YOUR KEY IS NOT ON THIS PHONE · tap to restore","bad"]}[s.kind];
+  bar.className=msg?"on "+msg[1]:"";
+  bar.querySelector(".et").textContent=msg?msg[0]:"";
+  bar.querySelector(".ei").innerHTML=msg?RBI.svg("unlock"):"";
+  bar._s=s;
+ }
+ function onOpen(roomId,type,otherId){
+  curRoom=roomId;
+  if(type==="dm"&&otherId)roomPeer.set(roomId,otherId);else roomPeer.set(roomId,null);
+  lockBtn.style.display="none";bar.className="";
+  if(type==="dm")refreshChat();
+ }
+ new MutationObserver(()=>{if($("app").dataset.v!=="chat"){lockBtn.style.display="none";bar.className=""}else if(curRoom)refreshChat()}).observe($("app"),{attributes:true,attributeFilter:["data-v"]});
+ const openChatPage=()=>{if(window.subPage&&curRoom)subPage.open("ENCRYPTION",b=>chatPage(b,curRoom))};
+ lockBtn.onclick=openChatPage;bar.onclick=openChatPage;
+
+ async function safetyCode(a,b){
+  const parts=[canon(a),canon(b)].sort().join("|");
+  const h=new Uint8Array(await subtle.digest("SHA-256",enc.encode(parts)));
+  const g=[];for(let i=0;i<24;i+=2)g.push(String(((h[i]<<8)|h[i+1])%100000).padStart(5,"0"));
+  return g;
+ }
+ async function chatPage(b,roomId){
+  b.appendChild(mk("div","e2eBusy","> checking keys..."));
+  const s=await stateOf(roomId);b.innerHTML="";
+  const name=pname(s.peerId);
+  const head=(ic,cls,t,sub)=>{const h=mk("div","e2eHead "+cls,RBI.svg(ic)+'<b></b><small></small>');h.querySelector("b").textContent=t;h.querySelector("small").textContent=sub;b.appendChild(h)};
+  const para=t=>{const p=mk("p","e2eP","");p.textContent=t;b.appendChild(p)};
+  const btn=(t,fn,cls)=>{const x=mk("button","e2eBtn"+(cls?" "+cls:""),"");x.textContent=t;x.onclick=fn;b.appendChild(x);return x};
+  if(s.kind==="enc"||s.kind==="changed"){
+   const ok=s.kind==="enc";
+   head(ok?"lock":"unlock",ok?"ok":"bad",ok?"MESSAGES ARE END-TO-END ENCRYPTED":"SECURITY CODE CHANGED",ok?"Only you and "+name+" can read the text messages in this chat.":name+" is now using a different encryption key.");
+   if(!ok){
+    para(name+" reset their keys or is using a new phone. It can also mean someone is trying to intercept the chat. Compare the new code with "+name+" in person or on a call before you trust it. Messages stay blocked until you decide.");
+   }
+   const key=s.peer;
+   if(key&&ring.length){
+    b.appendChild(mk("div","spSec","> SAFETY CODE"));
+    const g=await safetyCode(ring[ring.length-1].pub,key.jwk);
+    const box=mk("div","e2eCode","");g.forEach(x=>box.appendChild(mk("span",null,x)));b.appendChild(box);
+    para("Ask "+name+" to open this same screen. If the numbers are identical on both phones, nobody is in the middle.");
+   }
+   if(ok){
+    const pin=getPins()[s.peerId];
+    if(pin&&pin.ok)head("check","ok","VERIFIED","You confirmed this code.");
+    else btn("THE CODES MATCH - MARK AS VERIFIED",()=>{setPin(s.peerId,s.peer.fp,true);toast("marked as verified");chatPage(clear(b),roomId)});
+   }else{
+    btn("TRUST THE NEW KEY",()=>{setPin(s.peerId,s.peer.fp,false);toast("new key accepted");refreshChat();chatPage(clear(b),roomId)},"danger");
+   }
+  }else if(s.kind==="plain"){
+   head("unlock","warn","NOT ENCRYPTED YET",name+" has not set up encryption.");
+   para(name+" needs to open the latest RoomBoom once. After that, new messages in this chat are encrypted automatically. Until then they are sent as normal text.");
+  }else if(s.kind==="missing"){
+   head("unlock","bad","ENCRYPTION KEY MISSING",name+" had encryption before, but no key is available now.");
+   para("Messages are blocked so nothing is sent unencrypted by mistake. Ask "+name+" to open RoomBoom.");
+  }else if(s.kind==="locked"){
+   head("unlock","bad","YOUR KEY IS NOT ON THIS PHONE","Restore it to read and send encrypted messages.");
+   btn("RESTORE FROM BACKUP",()=>restoreNow(()=>chatPage(clear(b),roomId)));
+  }else{
+   head("unlock","warn","ENCRYPTION UNAVAILABLE","Could not check the keys right now. Try again with internet.");
+  }
+  b.appendChild(mk("div","spSec","> WHAT IS PROTECTED"));
+  para("Text messages in 1-to-1 chats. Photos, voice notes, files, group chats, who you talk to and message times are not encrypted yet.");
+ }
+ const clear=b=>{b.innerHTML="";return b};
+
+ async function restoreNow(done){
+  try{
+   const bk=await sb.from("key_backups").select("*").eq("user_id",uid()).maybeSingle();
+   if(!bk.data){toast("no backup found for this account","err");return}
+   const ok=await restoreFlow(bk.data);
+   if(ok){sharedC.clear();if(typeof syncRoom==="function")syncRoom();if(typeof loadRooms==="function")loadRooms();refreshChat()}
+   if(done)done();
+  }catch(e){toast(e,"err")}
+ }
+
+ /* ---------- menu > ENCRYPTION ---------- */
+ function page(b){
+  const row=(k,v)=>{const d=mk("div","kv","<span></span><span></span>");d.children[0].textContent=k;d.children[1].textContent=v;b.appendChild(d)};
+  const para=t=>{const p=mk("p","e2eP","");p.textContent=t;b.appendChild(p)};
+  const btn=(t,fn,cls)=>{const x=mk("button","e2eBtn"+(cls?" "+cls:""),"");x.textContent=t;x.onclick=fn;b.appendChild(x)};
+  const again=()=>{b.innerHTML="";page(b)};
+  b.appendChild(mk("div","spSec","> THIS PHONE"));
+  if(unavailable){
+   para("Encryption is not set up on the server yet. The admin must run e2e.sql in Supabase. Until then chats work as before, without encryption.");
+   return;
+  }
+  const cur=ring[ring.length-1];
+  row("encryption",ring.length?"ON":"NOT READY");
+  row("your key",cur?fmtFp(cur.fp):"-");
+  row("backup",backupExists===null?"checking...":backupExists?"saved":"NOT SAVED");
+  if(!ring.length)btn("RESTORE KEY FROM BACKUP",()=>restoreNow(again));
+  else btn(backupExists?"CHANGE BACKUP PASSPHRASE":"SET BACKUP PASSPHRASE",async()=>{await createPassphrase(false);again()});
+  b.appendChild(mk("div","spSec","> HOW IT WORKS"));
+  para("Every 1-to-1 text message is locked on your phone with a key only you and your friend can make. The server (and the admin) only ever stores unreadable text. Tap the lock icon inside a chat to compare a safety code with your friend and make sure nobody is in the middle.");
+  para("Not encrypted yet: photos, voice notes, files, group chats, who you talk to, and message times.");
+  para("If you change phones, restore your key with the backup passphrase. If you lose the phone AND the passphrase, old messages cannot be recovered.");
+  b.appendChild(mk("div","spSec","> DANGER ZONE"));
+  btn("RESET MY ENCRYPTION KEYS",async()=>{
+   const r=await ask({title:"> reset encryption keys?",note:"Your friends will see a security code warning. Old messages stay readable only while your old keys exist on this phone or in your backup.",fields:[],ok:"RESET",extra:[["CANCEL","no"]]});
+   if(!r||r==="no")return;
+   try{await createNew(false);again()}catch(e){toast(e,"err")}
+  },"danger");
+ }
+
+ window.RBe2e={init,whenReady,protect,dec,decMany,onOpen,page,refreshChat,get ready(){return ready},get unavailable(){return unavailable}};
+})();

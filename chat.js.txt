@@ -26,12 +26,9 @@
  window.addEventListener("resize",()=>{
   const ih=window.innerHeight,d=lastIH-ih;lastIH=ih;
   if(Math.abs(d)<100||curView!=="chat")return;
-  chatView.style.transition="none";chatView.style.transform="translateY("+d+"px)";
-  void chatView.offsetHeight;
-  requestAnimationFrame(()=>{
-   chatView.style.transition="transform .26s cubic-bezier(.22,.8,.3,1)";chatView.style.transform="";
-   setTimeout(()=>{chatView.style.transition=""},300);
-  });
+  chatView.getAnimations().forEach(a=>{if(a.id==="kb")a.cancel()});
+  const a=chatView.animate([{transform:"translate3d(0,"+d+"px,0)"},{transform:"translate3d(0,0,0)"}],{duration:300,easing:"cubic-bezier(.17,.84,.3,1)"});
+  a.id="kb";
  });
  /* some WebViews don't resize the page for the keyboard: shrink the app to the visible area ourselves */
  const vv=window.visualViewport;
@@ -188,4 +185,15 @@
  const orig=btn.onclick;
  btn.onclick=function(e){const had=document.activeElement===txt;const r=orig&&orig.call(this,e);if(had)keep();return r};
  txt.addEventListener("keydown",e=>{if(e.key==="Enter")setTimeout(keep,0)});
+})();
+
+/* ---------------- opening a chat opens the keyboard ---------------- */
+(function(){
+ const txt=$("txt");if(!txt)return;
+ let t=null;
+ new MutationObserver(()=>{
+  clearTimeout(t);
+  if($("app").dataset.v!=="chat")return;
+  t=setTimeout(()=>{if($("app").dataset.v==="chat"&&!document.activeElement.matches("input,textarea")&&$("chatBar").style.display!=="none")txt.focus({preventScroll:true})},260);
+ }).observe($("app"),{attributes:true,attributeFilter:["data-v"]});
 })();

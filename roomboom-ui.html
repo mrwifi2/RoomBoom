@@ -149,6 +149,7 @@ header h2{margin:0;flex:1;font-size:15px;font-weight:600;white-space:nowrap;over
 <link rel="stylesheet" href="player.css">
 <link rel="stylesheet" href="picker.css">
 <link rel="stylesheet" href="display.css">
+<link rel="stylesheet" href="e2e.css">
 </head>
 <body>
 <canvas id="rain"></canvas>
@@ -417,7 +418,7 @@ let started=false;
 function enter(){
  started=true;$("login").style.display="none";$("app").style.display="flex";
  const a=$("app");a.classList.add("noanim");setTimeout(()=>a.classList.remove("noanim"),500);
- show("rooms",true);loadRooms();ping();setInterval(ping,60000);startGlobal();flushOutbox();
+ show("rooms",true);loadRooms();ping();setInterval(ping,60000);startGlobal();flushOutbox();setTimeout(()=>{if(window.RBe2e)RBe2e.init()},600);
 }
 async function start(){
  let c=null;try{c=JSON.parse(localStorage.getItem("rb_me"))}catch(e){}
@@ -669,7 +670,8 @@ async function loadRooms(){
  await fetchProfiles();
  const [{data:ms},{data:lm}]=await Promise.all([
   sb.from("room_members").select("room_id,user_id,last_read_at,rooms(id,type,name)"),
-  sb.from("messages").select("room_id,sender_id,body,created_at,expires_at,media_type").order("created_at",{ascending:false}).limit(300)]);
+  sb.from("messages").select("id,room_id,sender_id,body,created_at,expires_at,media_type").order("created_at",{ascending:false}).limit(300)]);
+ if(window.RBe2e&&lm)await RBe2e.decMany(lm);
  if(!ms){if(!roomsShown){l.innerHTML='<div class="item"><small>> offline - no saved chats yet.</small></div>'}return}
  if(!ms.length&&!navigator.onLine)return;
  const by={};ms.forEach(m=>(by[m.room_id]??=[]).push(m));
@@ -750,6 +752,8 @@ async function openRoom(id,name,type){
  if(room!==id)return;
  clearLoaders($("msgs"));
  let fresh=false;
+ if(data&&window.RBe2e)await RBe2e.decMany(data);
+ if(room!==id)return;
  if(data){
   fresh=true;msgs.clear();[...data].reverse().forEach(m=>msgs.set(m.id,m));queuedFor(id).forEach(m=>msgs.set(m.id,m));
   if(!sig0||msgSig()!==sig0)paintAll();
@@ -758,13 +762,15 @@ async function openRoom(id,name,type){
  clearInterval(subTimer);
  isOwner=false;
  if(roomType==="dm"){const o=(mm||[]).find(x=>x.user_id!==me.id);otherId=o?o.user_id:null;updSub();subTimer=setInterval(updSub,20000)}
+ if(window.RBe2e)RBe2e.onOpen(id,roomType,otherId);
  else{isOwner=(mm||[]).some(x=>x.user_id===me.id&&x.role==="owner");$("substatus").textContent=mm?mm.length+" members · tap name for options":"offline";$("substatus").classList.add("on")}
  if(fresh){await loadRx();msgs.forEach(m=>paintRx(m.id));persistMsgs()}
  markRead();
  chan=sb.channel("m-"+id)
   .on("postgres_changes",{event:"*",schema:"public",table:"messages",filter:"room_id=eq."+id},p=>{
-    if(!p.new||!p.new.id)return;if(p.new.body===DEL){dropMsgLocal(p.new.id);return}msgs.set(p.new.id,p.new);draw(p.new);persistMsgs();
-    if(p.eventType==="INSERT"&&p.new.sender_id!==me.id&&!document.hidden)markRead()})
+    if(!p.new||!p.new.id)return;if(p.new.body===DEL){dropMsgLocal(p.new.id);return}
+    Promise.resolve(window.RBe2e?RBe2e.dec(p.new):p.new).then(n=>{if(room!==id)return;msgs.set(n.id,n);draw(n);persistMsgs();
+     if(p.eventType==="INSERT"&&n.sender_id!==me.id&&!document.hidden)markRead()})})
   .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages"},p=>{const rid=p.old&&p.old.id;if(rid&&msgs.has(rid))dropMsgLocal(rid)}) /* someone unsent a message */
   .on("postgres_changes",{event:"UPDATE",schema:"public",table:"room_members",filter:"room_id=eq."+id},p=>{
     if(p.new.user_id!==me.id){otherRead=Math.max(otherRead||0,T(p.new.last_read_at));paintTicks()}})
@@ -782,6 +788,8 @@ async function syncRoom(){
  if(!room)return;const id=room;
  const {data}=await sb.from("messages").select("*").eq("room_id",id).order("created_at",{ascending:false}).limit(60);
  if(!data||room!==id)return;
+ if(window.RBe2e)await RBe2e.decMany(data);
+ if(room!==id)return;
  let changed=false;
  [...data].reverse().forEach(m=>{const o=msgs.get(m.id);if(!o||o.edited_at!==m.edited_at||o.body!==m.body){msgs.set(m.id,m);draw(m);changed=true}});
  if(changed)persistMsgs();
@@ -951,7 +959,9 @@ async function send(){
  if(editing){const id=editing;editing=null;updBars();
   const em=msgs.get(id);
   if(!canEdit(em)){toast("you can only edit a message within 15 minutes","err");return}
-  const {error}=await sb.from("messages").update({body,edited_at:new Date().toISOString()}).eq("id",id);
+  let nb=body;
+  if(window.RBe2e){const r=await RBe2e.protect({id,room_id:room,sender_id:me.id,body});if(r.error){toast(r.error,"err");return}nb=r.body}
+  const {error}=await sb.from("messages").update({body:nb,edited_at:new Date().toISOString()}).eq("id",id);
   if(error)toast(error,"err");return}
  const row={id:crypto.randomUUID(),room_id:room,sender_id:me.id,body};
  if(replyTo)row.reply_to=replyTo;if(boomSecs)row.boom_seconds=boomSecs;
@@ -1135,6 +1145,7 @@ start();
 <script src="player.js" defer></script>
 <script src="picker.js" defer></script>
 <script src="display.js" defer></script>
+<script src="e2e.js" defer></script>
 <script src="termguide.js" defer></script>
 <script src="panels.js" defer></script>
 </body>

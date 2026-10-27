@@ -357,7 +357,7 @@
  (function(){
   const dr=$("drawer"),anchor=$("drawerAdmin");
   dr.insertBefore(mk("div","dsec","&gt; TOOLS"),anchor);
-  [["sliders","DISPLAY SETTINGS",(b)=>window.RBdisplay&&RBdisplay.page(b)],["star","STARRED MESSAGES",starsPage],["bomb","BOOM TIMER",(b)=>window.RBboom&&RBboom.page(b)],["archive","ARCHIVED CHATS",archPage],["terminal","TERMINAL COMMANDS",cmdsPage],
+  [["sliders","DISPLAY SETTINGS",(b)=>window.RBdisplay&&RBdisplay.page(b)],["lock","ENCRYPTION",(b)=>window.RBe2e&&RBe2e.page(b)],["star","STARRED MESSAGES",starsPage],["bomb","BOOM TIMER",(b)=>window.RBboom&&RBboom.page(b)],["archive","ARCHIVED CHATS",archPage],["terminal","TERMINAL COMMANDS",cmdsPage],
    ["database","STORAGE & CACHE",storagePage],["pulse","DIAGNOSTICS",diagPage],["info","ABOUT & HELP",aboutPage]].forEach(([ic,t,fn])=>{
     const b=mk("button","dtool",RBI.label(ic,t));
     b.onclick=()=>openPage(t,fn);

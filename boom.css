@@ -3,8 +3,15 @@
  transition:max-height .28s cubic-bezier(.2,.9,.3,1),opacity .22s,padding .28s;cursor:pointer;background:var(--bg)}
 #boomTag.on{max-height:34px;opacity:1;padding:7px 14px}
 #boomTag .i{width:15px;height:15px}
-#v-chat.boomOn #wrap:after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 46px rgba(255,176,32,.13);animation:boomGlow 2.4s ease-in-out infinite}
-@keyframes boomGlow{50%{opacity:.45}}
+#v-chat{position:relative}
+#v-chat:after{content:"";position:absolute;inset:0;z-index:30;pointer-events:none;opacity:0;transition:opacity .45s;
+ box-shadow:inset 0 0 0 2px rgba(255,176,32,.7),inset 0 0 34px 6px rgba(255,176,32,.38)}
+#v-chat.boomOn:after{opacity:1;animation:boomGlow 2.6s ease-in-out infinite}
+@keyframes boomGlow{50%{opacity:.6}}
+#boomRing{position:absolute;inset:0;z-index:29;overflow:hidden;pointer-events:none}
+#boomRing i{position:absolute;left:50%;bottom:0;width:230vmax;height:230vmax;margin-bottom:-115vmax;border-radius:50%;opacity:0;
+ border:3px solid #ffb020;background:radial-gradient(circle,rgba(255,176,32,0) 55%,rgba(255,176,32,.28) 100%)}
+#boomTag,#boomPull .bpt{display:none!important}
 #boomPull{position:absolute;left:50%;bottom:14px;z-index:15;display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:22px;background:var(--panel2);
  border:1px solid var(--line);color:var(--dim);font-size:11px;letter-spacing:1px;white-space:nowrap;pointer-events:none;opacity:0;transform:translate3d(-50%,16px,0) scale(.85);
  transition:opacity .22s,transform .26s cubic-bezier(.3,.8,.3,1),color .15s,border-color .15s}

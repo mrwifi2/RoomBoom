@@ -116,13 +116,19 @@ async function sendItem(it){
   const {error:upErr}=await sb.storage.from("media").upload(row.media_path,blob,{contentType:it.ctype||blob.type||"application/octet-stream"});
   if(upErr&&!/already exists|duplicate/i.test(upErr.message||""))return{error:upErr};
  }
+ if(row.body&&!row.media_path&&window.RBe2e){ /* end-to-end encryption for 1-to-1 text */
+  await RBe2e.whenReady();
+  const pr=await RBe2e.protect(row);if(pr.error)return{error:pr.error};row.body=pr.body;
+ }
+ const plain=it.row.body,wasEnc=row.body!==plain;
  const {data,error}=await sb.from("messages").insert(row).select().single();
  if(error){
   if(row.id&&(error.code==="23505"||/duplicate key/i.test(error.message||""))){ /* a retry after a lost reply: it is already there */
-   const r=await sb.from("messages").select("*").eq("id",row.id).single();if(r.data)return{data:r.data};
+   const r=await sb.from("messages").select("*").eq("id",row.id).single();if(r.data){if(wasEnc){r.data.body=plain;r.data._e2e=1}return{data:r.data}}
   }
   return{error};
  }
+ if(wasEnc&&data){data.body=plain;data._e2e=1} /* we keep our own readable copy */
  return{data};
 }
 

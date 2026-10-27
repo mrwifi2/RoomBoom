@@ -1,0 +1,26 @@
+/* ===== end-to-end encryption UI ===== */
+#lockBtn{margin-right:2px}
+#lockBtn .i{width:19px;height:19px}
+#lockBtn.e2e-enc{color:var(--g)}
+#lockBtn.e2e-plain,#lockBtn.e2e-unknown{color:var(--o)}
+#lockBtn.e2e-changed,#lockBtn.e2e-missing,#lockBtn.e2e-locked{color:var(--r);animation:e2ePulse 1.6s ease-in-out infinite}
+@keyframes e2ePulse{50%{opacity:.45}}
+#e2eBar{display:flex;align-items:center;gap:8px;max-height:0;overflow:hidden;opacity:0;padding:0 14px;font-size:11px;letter-spacing:.6px;cursor:pointer;background:var(--bg);
+ transition:max-height .28s cubic-bezier(.2,.9,.3,1),opacity .22s,padding .28s}
+#e2eBar.on{max-height:40px;opacity:1;padding:7px 14px}
+#e2eBar .i{width:14px;height:14px;flex:none}
+#e2eBar.warn{color:var(--o)}#e2eBar.bad{color:var(--r)}
+.e2eHead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:18px 10px 8px}
+.e2eHead .i{width:44px;height:44px}
+.e2eHead b{font-size:13px;letter-spacing:1px}
+.e2eHead small{color:var(--dim);font-size:12.5px;line-height:1.5}
+.e2eHead.ok{color:var(--g)}.e2eHead.warn{color:var(--o)}.e2eHead.bad{color:var(--r)}
+.e2eHead small{color:var(--dim)}
+.e2eP{color:var(--dim);font-size:12.5px;line-height:1.6;margin:8px 4px}
+.e2eNote{color:var(--dim);font-size:12px;line-height:1.55}
+.e2eBusy{color:var(--dim);text-align:center;padding:40px 0;letter-spacing:1px;font-size:12px}
+.e2eCode{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 6px;padding:14px;margin:4px 0;border-radius:14px;background:var(--panel);text-align:center}
+.e2eCode span{font-size:17px;letter-spacing:2px;color:var(--c);font-variant-numeric:tabular-nums}
+.e2eBtn{display:block;width:100%;margin:12px 0;padding:14px;border:1px solid var(--g);border-radius:12px;background:transparent;color:var(--g);font:inherit;font-size:12px;letter-spacing:1px}
+.e2eBtn:active{background:rgba(255,255,255,.06)}
+.e2eBtn.danger{border-color:var(--r);color:var(--r)}
