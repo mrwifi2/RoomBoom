@@ -20,8 +20,8 @@ jobs:
           set -x
           mkdir -p www
           cp roomboom-ui.html www/index.html
-          cp nav.css ui.css chat.css home.css panels.css boom.css player.css picker.css display.css www/
-          for f in nav icons offline gestures chat home boom player picker display termguide panels; do
+          cp nav.css ui.css chat.css home.css panels.css boom.css player.css picker.css display.css e2e.css www/
+          for f in nav icons offline gestures chat home boom player picker display termguide e2e panels; do
             if [ -f "$f.js.txt" ]; then cp "$f.js.txt" "www/$f.js"; elif [ -f "$f.js" ]; then cp "$f.js" "www/$f.js"; else echo "missing $f.js"; exit 1; fi
           done
           cp node_modules/@supabase/supabase-js/dist/umd/supabase.js www/supabase.js || echo "local supabase copy skipped (CDN fallback will be used)"
@@ -57,6 +57,13 @@ jobs:
           python3 terminal-src/inject.py
           bash terminal-src/fetch-assets.sh android/app/src/main
           npx cap sync android
+      - name: Sign with the fixed RoomBoom key (so updates install over the old app)
+        run: |
+          mkdir -p ~/.android
+          base64 -d rb-keystore.txt > ~/.android/debug.keystore
+          G=android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" $G
+          grep -n "versionCode" $G
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
